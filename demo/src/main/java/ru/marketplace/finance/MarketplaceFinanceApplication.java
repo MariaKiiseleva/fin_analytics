@@ -1,13 +1,13 @@
-package com.example.demo;
+package ru.marketplace.finance;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
-public class DemoApplication {
+public class MarketplaceFinanceApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(DemoApplication.class, args);
+		SpringApplication.run(MarketplaceFinanceApplication.class, args);
 	}
 
 }
