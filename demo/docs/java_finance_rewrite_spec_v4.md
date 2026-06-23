@@ -182,7 +182,18 @@ ru.marketplace.finance
 1. `financial_operations_raw`;
 2. `daily_finance_entries`.
 
-Служебные таблицы пользователей, настроек, себестоимости, журнала загрузок и покрытия не считаются финансовыми слоями.
+Служебные таблицы пользователей, токенов маркетплейса, себестоимости и журнала загрузок не считаются финансовыми слоями.
+
+Целевая Java-версия не копирует Laravel-схему один к одному. Из Laravel переносится бизнес-смысл, а не устаревшие промежуточные таблицы:
+
+- `users` сохраняется, но вместо `name`, `password`, `is_admin` используются `display_name`, `password_hash`, `role`;
+- `user_settings` не создаётся, потому что единственная сохраняемая настройка — налоговая ставка — хранится в `users.tax_percent`;
+- `wb_api_key_stats` из Laravel-настроек переносится в отдельную таблицу `marketplace_credentials`, чтобы отделить секреты от профиля пользователя;
+- `product_costs` сохраняется как история себестоимости с датой начала действия;
+- `wb_imports` заменяется журналом `sync_jobs`;
+- `wb_fin_ops_raw` заменяется первым финансовым слоем `financial_operations_raw`;
+- `wb_fin_ops_items`, `wb_fin_ops_agg`, `wb_fin_report_items`, `excel_fin_report_items`, `sales_imports` и `sales_rows` не переносятся;
+- отдельная таблица покрытия дат не создаётся, покрытие определяется по `daily_finance_entries`.
 
 ### 7.1 `users`
 
@@ -192,27 +203,18 @@ CREATE TABLE users (
     email           VARCHAR(255) NOT NULL UNIQUE,
     password_hash   VARCHAR(255) NOT NULL,
     display_name    VARCHAR(255) NOT NULL,
+    tax_percent     NUMERIC(7,4) NOT NULL DEFAULT 0.0000,
     enabled         BOOLEAN NOT NULL DEFAULT TRUE,
     role            VARCHAR(30) NOT NULL DEFAULT 'USER',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
-
-### 7.2 `user_settings`
-
-```sql
-CREATE TABLE user_settings (
-    id              BIGSERIAL PRIMARY KEY,
-    user_id         BIGINT NOT NULL UNIQUE REFERENCES users(id),
-    tax_percent     NUMERIC(7,4) NOT NULL DEFAULT 6.0000,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT chk_tax_percent CHECK (tax_percent >= 0 AND tax_percent <= 100)
+    CONSTRAINT chk_users_tax_percent CHECK (tax_percent >= 0 AND tax_percent <= 100)
 );
 ```
 
-### 7.3 `marketplace_credentials`
+`tax_percent` хранит итоговый пользовательский процент налога. Интерфейс может предлагать налоговые режимы как пресеты, но в базу сохраняется только процент. Значение по умолчанию равно `0.0000`, чтобы пользователь явно выбрал ставку или режим налога в аккаунте.
+
+### 7.2 `marketplace_credentials`
 
 ```sql
 CREATE TABLE marketplace_credentials (
@@ -229,7 +231,7 @@ CREATE TABLE marketplace_credentials (
 
 Токен не возвращается через API и не выводится в логах.
 
-### 7.4 `product_costs`
+### 7.3 `product_costs`
 
 ```sql
 CREATE TABLE product_costs (
@@ -251,7 +253,7 @@ CREATE INDEX idx_product_cost_lookup
 
 Стоимость на дату выбирается как последняя запись с `valid_from <= business_date`.
 
-### 7.5 `sync_jobs`
+### 7.4 `sync_jobs`
 
 ```sql
 CREATE TABLE sync_jobs (
@@ -288,23 +290,7 @@ public enum SyncStatus {
 }
 ```
 
-### 7.6 `coverage_days`
-
-```sql
-CREATE TABLE coverage_days (
-    id              BIGSERIAL PRIMARY KEY,
-    user_id         BIGINT NOT NULL REFERENCES users(id),
-    business_date   DATE NOT NULL,
-    status          VARCHAR(20) NOT NULL,
-    last_sync_job_id BIGINT REFERENCES sync_jobs(id),
-    covered_at      TIMESTAMPTZ,
-    CONSTRAINT uq_coverage_day UNIQUE (user_id, business_date)
-);
-```
-
-Покрытие зависит от успешного завершения полной загрузки даты, а не от наличия продаж.
-
-### 7.7 Первый финансовый слой `financial_operations_raw`
+### 7.5 Первый финансовый слой `financial_operations_raw`
 
 ```sql
 CREATE TABLE financial_operations_raw (
@@ -368,9 +354,9 @@ CREATE INDEX idx_raw_user_nm_date
 - восстановление происхождения суммы;
 - диагностика неизвестных операций.
 
-### 7.8 Второй финансовый слой `daily_finance_entries`
+### 7.6 Второй финансовый слой `daily_finance_entries`
 
-Таблица содержит одну строку на товар за день и не более одной общей строки без товара за день.
+Таблица содержит одну строку на товар за день и ровно одну общую строку без товара за каждый успешно покрытый день.
 
 ```sql
 CREATE TABLE daily_finance_entries (
@@ -436,6 +422,8 @@ CREATE UNIQUE INDEX uq_daily_common
 CREATE INDEX idx_daily_report_period
     ON daily_finance_entries(user_id, business_date);
 ```
+
+Покрытие периода определяется по наличию строк в `daily_finance_entries`. После успешной загрузки за каждую дату периода создаётся общая строка `nm_id IS NULL`, даже если за дату нет операций и все суммы равны нулю. Если день отсутствует в `daily_finance_entries`, он считается непокрытым.
 
 #### Товарная строка
 
@@ -1101,7 +1089,7 @@ public class StartFinanceSyncService {
 8. Зафиксировать `RAW_SAVED`.
 9. Получить список затронутых дат.
 10. Для каждой даты выполнить `RecalculateFinanceDayService`.
-11. Обновить `coverage_days`.
+11. Для каждой успешно загруженной даты периода гарантировать общую строку `daily_finance_entries` с `nm_id IS NULL`.
 12. Установить `COMPLETED`.
 13. При ошибке установить `FAILED`.
 
@@ -2069,11 +2057,9 @@ src/main/java/ru/marketplace/finance
 │   │   └── CredentialService.java
 │   ├── domain
 │   │   ├── User.java
-│   │   ├── UserSettings.java
 │   │   └── MarketplaceCredential.java
 │   └── infrastructure
 │       ├── UserRepository.java
-│       ├── UserSettingsRepository.java
 │       └── MarketplaceCredentialRepository.java
 ├── cost
 │   ├── api
@@ -2092,15 +2078,12 @@ src/main/java/ru/marketplace/finance
 │   ├── application
 │   │   ├── StartSyncUseCase.java
 │   │   ├── SyncOrchestrator.java
-│   │   ├── CoverageService.java
 │   │   └── StaleSyncRecoveryService.java
 │   ├── domain
 │   │   ├── SyncJob.java
-│   │   ├── SyncStatus.java
-│   │   └── CoverageDay.java
+│   │   └── SyncStatus.java
 │   └── infrastructure
-│       ├── SyncJobRepository.java
-│       └── CoverageDayRepository.java
+│       └── SyncJobRepository.java
 ├── finance
 │   ├── api
 │   │   ├── FinancePageController.java
@@ -2170,15 +2153,14 @@ src/main/resources
 
 ```text
 V1__create_users.sql
-V2__create_user_settings.sql
-V3__create_marketplace_credentials.sql
-V4__create_product_costs.sql
-V5__create_sync_jobs.sql
-V6__create_coverage_days.sql
-V7__create_financial_operations_raw.sql
-V8__create_daily_finance_entries.sql
-V9__create_indexes.sql
+V2__create_marketplace_credentials.sql
+V3__create_product_costs.sql
+V4__create_sync_jobs.sql
+V5__create_financial_operations_raw.sql
+V6__create_daily_finance_entries.sql
 ```
+
+Индексы создаются в тех же миграциях, что и соответствующие таблицы. Отдельная миграция `create_indexes` не используется.
 
 ### 40.1 Правила миграций
 
@@ -2859,7 +2841,6 @@ public class DailyFinanceRecalculationService {
 Для параллельного пересчёта одной даты используется один из вариантов:
 
 - PostgreSQL advisory lock;
-- pessimistic lock по строке покрытия;
 - запрет пересекающихся активных `sync_job` пользователя.
 
 Для MVP достаточно запрета второго активного задания пользователя и последовательного пересчёта дат внутри одного задания.
@@ -2887,7 +2868,7 @@ CREATED
 → определение affectedDates
 → последовательный пересчёт affectedDates
 → DAILY_RECALCULATED
-→ обновление coverage_days
+→ создание общих строк дня для покрытия периода
 → COMPLETED
 ```
 
@@ -2964,6 +2945,8 @@ Content-Type: application/json
 ```http
 GET /api/v1/coverage/check?dateFrom=2026-06-01&dateTo=2026-06-30
 ```
+
+Покрытие вычисляется по `daily_finance_entries`: дата считается покрытой, если для пользователя существует общая строка дня `nm_id IS NULL`. После успешной загрузки периода такая строка создаётся для каждой даты периода, включая дни без операций.
 
 ```json
 {
@@ -3081,7 +3064,7 @@ GROUP BY business_date
 ORDER BY business_date;
 ```
 
-Каждая дата покрытого периода должна присутствовать. Если операций нет, рекомендуется сохранять общую нулевую строку дня, чтобы временной ряд не имел разрывов.
+Каждая дата покрытого периода должна присутствовать. Если операций нет, сохраняется общая нулевая строка дня `nm_id IS NULL`, чтобы временной ряд не имел разрывов и покрытие периода можно было определить по `daily_finance_entries`.
 
 ### 54.3 Структура затрат
 
@@ -3419,7 +3402,7 @@ Docker считается единственным дополнительным 
 
 ### Этап 2
 
-Создать Flyway V1–V9 и integration test, который запускает PostgreSQL Testcontainer и проверяет наличие таблиц и индексов.
+Создать Flyway V1–V6 и integration test, который запускает PostgreSQL Testcontainer и проверяет наличие таблиц и индексов.
 
 ### Этап 3
 
@@ -3510,4 +3493,3 @@ Docker считается единственным дополнительным 
 - Неизвестные операции не включаются автоматически в неопределённую категорию.
 - Исторические изменения API могут потребовать обновления классификатора.
 - Приложение не заменяет бухгалтерский или налоговый учёт.
-
