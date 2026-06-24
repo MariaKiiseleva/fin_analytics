@@ -70,4 +70,86 @@ class RawFinancialOperationRepositoryTest {
 					assertThat(found.getRawPayload()).contains("Продажа");
 				});
 	}
+
+	@Test
+	void groupsUnrecognizedOperationsByOperationNameAndDocumentType() {
+		User user = userRepository.saveAndFlush(new User("seller2@example.com", "$2a$10$hash", "Seller"));
+		SyncJob syncJob = syncJobRepository.saveAndFlush(new SyncJob(
+				user.getId(),
+				LocalDate.of(2026, 6, 1),
+				LocalDate.of(2026, 6, 30)));
+		rawRepository.save(unrecognized(
+				user.getId(),
+				syncJob.getId(),
+				"0000000000000000000000000000000000000000000000000000000000000001",
+				"Новая операция",
+				"Документ 1",
+				LocalDate.of(2026, 6, 15)));
+		rawRepository.save(unrecognized(
+				user.getId(),
+				syncJob.getId(),
+				"0000000000000000000000000000000000000000000000000000000000000002",
+				"Новая операция",
+				"Документ 1",
+				LocalDate.of(2026, 6, 16)));
+		rawRepository.save(unrecognized(
+				user.getId(),
+				syncJob.getId(),
+				"0000000000000000000000000000000000000000000000000000000000000003",
+				"Другая операция",
+				null,
+				LocalDate.of(2026, 6, 16)));
+		rawRepository.save(recognized(
+				user.getId(),
+				syncJob.getId(),
+				"0000000000000000000000000000000000000000000000000000000000000004",
+				LocalDate.of(2026, 6, 16)));
+		rawRepository.flush();
+
+		assertThat(rawRepository.findUnrecognizedOperationSummaries(
+						user.getId(),
+						LocalDate.of(2026, 6, 1),
+						LocalDate.of(2026, 6, 30)))
+				.extracting(
+						UnrecognizedOperationSummary::supplierOperationName,
+						UnrecognizedOperationSummary::documentType,
+						UnrecognizedOperationSummary::rowsCount)
+				.containsExactly(
+						org.assertj.core.groups.Tuple.tuple("Новая операция", "Документ 1", 2L),
+						org.assertj.core.groups.Tuple.tuple("Другая операция", null, 1L));
+	}
+
+	private static RawFinancialOperation recognized(
+			Long userId,
+			Long syncJobId,
+			String rowHash,
+			LocalDate businessDate) {
+		RawFinancialOperation operation = new RawFinancialOperation(
+				userId,
+				syncJobId,
+				rowHash,
+				businessDate,
+				"{\"supplier_oper_name\":\"Продажа\"}");
+		operation.setOperationNames("Продажа", "Продажа");
+		operation.markRecognized("SALE");
+		return operation;
+	}
+
+	private static RawFinancialOperation unrecognized(
+			Long userId,
+			Long syncJobId,
+			String rowHash,
+			String supplierOperationName,
+			String documentType,
+			LocalDate businessDate) {
+		RawFinancialOperation operation = new RawFinancialOperation(
+				userId,
+				syncJobId,
+				rowHash,
+				businessDate,
+				"{\"supplier_oper_name\":\"" + supplierOperationName + "\"}");
+		operation.setOperationNames(supplierOperationName, documentType);
+		operation.markUnrecognized();
+		return operation;
+	}
 }
