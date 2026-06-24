@@ -16,6 +16,7 @@ import ru.marketplace.finance.account.domain.User;
 import ru.marketplace.finance.account.infrastructure.UserRepository;
 import ru.marketplace.finance.cost.domain.ProductCost;
 import ru.marketplace.finance.cost.infrastructure.ProductCostRepository;
+import ru.marketplace.finance.finance.domain.ClassificationStatus;
 import ru.marketplace.finance.finance.domain.DailyFinanceEntry;
 import ru.marketplace.finance.finance.domain.RawFinancialOperation;
 import ru.marketplace.finance.finance.infrastructure.persistence.DailyFinanceEntryRepository;
@@ -84,6 +85,7 @@ class DailyFinanceRecalculationServiceTest {
 		rawRepository.save(secondProductSale(user.getId(), syncJob.getId(), businessDate));
 		rawRepository.save(orderLogistics(user.getId(), syncJob.getId(), businessDate));
 		rawRepository.save(deduction(user.getId(), syncJob.getId(), businessDate));
+		rawRepository.save(unrecognizedOperation(user.getId(), syncJob.getId(), businessDate));
 		rawRepository.flush();
 
 		DailyFinanceRecalculationResult result = recalculationService.recalculate(
@@ -91,9 +93,10 @@ class DailyFinanceRecalculationServiceTest {
 				businessDate,
 				businessDate);
 
-		assertThat(result.rawRows()).isEqualTo(5);
+		assertThat(result.rawRows()).isEqualTo(6);
 		assertThat(result.affectedDays()).isEqualTo(1);
 		assertThat(result.savedDailyRows()).isEqualTo(3);
+		assertThat(result.unrecognizedRows()).isEqualTo(1);
 		DailyFinanceEntry productRow = dailyRepository
 				.findByUserIdAndBusinessDateAndNmId(user.getId(), businessDate, 123456789L)
 				.orElseThrow();
@@ -120,6 +123,15 @@ class DailyFinanceRecalculationServiceTest {
 				.orElseThrow();
 		assertThat(commonRow.getAcquiringAmount()).isEqualByComparingTo("45.00");
 		assertThat(commonRow.getAdditionalDeductionsAmount()).isEqualByComparingTo("20.00");
+		assertThat(rawRepository.findByUserIdAndBusinessDate(user.getId(), businessDate))
+				.filteredOn(operation -> "Неизвестная операция WB".equals(operation.getSupplierOperationName()))
+				.singleElement()
+				.extracting(RawFinancialOperation::getClassificationStatus)
+				.isEqualTo(ClassificationStatus.UNRECOGNIZED);
+		assertThat(rawRepository.findByUserIdAndBusinessDate(user.getId(), businessDate))
+				.filteredOn(operation -> "Продажа".equals(operation.getSupplierOperationName()))
+				.allSatisfy(operation -> assertThat(operation.getClassificationStatus())
+						.isEqualTo(ClassificationStatus.RECOGNIZED));
 	}
 
 	private static RawFinancialOperation sale(Long userId, Long syncJobId, LocalDate businessDate) {
@@ -226,6 +238,27 @@ class DailyFinanceRecalculationServiceTest {
 		return operation;
 	}
 
+	private static RawFinancialOperation unrecognizedOperation(Long userId, Long syncJobId, LocalDate businessDate) {
+		RawFinancialOperation operation = raw(userId, syncJobId, businessDate, "unrecognized");
+		operation.setOperationIdentity("unknown-1", "srid-3", 333333333L);
+		operation.setOperationNames("Неизвестная операция WB", null);
+		operation.setAmounts(
+				1,
+				new BigDecimal("999.00"),
+				null,
+				new BigDecimal("900.00"),
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null);
+		return operation;
+	}
+
 	private static RawFinancialOperation raw(
 			Long userId,
 			Long syncJobId,
@@ -246,6 +279,7 @@ class DailyFinanceRecalculationServiceTest {
 			case "second-sale" -> "0003";
 			case "logistics" -> "0004";
 			case "deduction" -> "0005";
+			case "unrecognized" -> "0006";
 			default -> "9999";
 		};
 	}

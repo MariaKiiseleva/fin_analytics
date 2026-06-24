@@ -7,6 +7,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.marketplace.finance.account.domain.User;
@@ -55,9 +56,16 @@ public class DailyFinanceRecalculationService {
 		List<RawFinancialOperation> operations = rawRepository
 				.findByUserIdAndBusinessDateBetweenOrderByBusinessDateAscIdAsc(userId, dateFrom, dateTo);
 		Map<LocalDate, DayAccumulator> days = createDays(dateFrom, dateTo);
+		int unrecognizedRows = 0;
 
 		for (RawFinancialOperation operation : operations) {
 			FinancialOperationType operationType = classify(operation);
+			if (operationType == FinancialOperationType.UNRECOGNIZED) {
+				operation.markUnrecognized();
+				unrecognizedRows++;
+				continue;
+			}
+			operation.markRecognized(operationType.name());
 			MoneyCalculationResult money = moneyCalculator.calculate(toMoneyInput(operation, operationType));
 			days.get(operation.getBusinessDate()).add(operation, operationType, money);
 		}
@@ -68,11 +76,11 @@ public class DailyFinanceRecalculationService {
 			savedRows += saveDay(user, day);
 		}
 
-		return new DailyFinanceRecalculationResult(operations.size(), days.size(), savedRows);
+		return new DailyFinanceRecalculationResult(operations.size(), days.size(), savedRows, unrecognizedRows);
 	}
 
 	private int saveDay(User user, DayAccumulator day) {
-		day.distributeUnassignedLogistics();
+		day.prepareProductRows();
 		DailyFinanceEntry commonRow = DailyFinanceEntry.commonRow(user.getId(), day.businessDate, CALCULATION_VERSION);
 		commonRow.replaceCommonExpenses(
 				day.commonAcquiring,
@@ -154,7 +162,7 @@ public class DailyFinanceRecalculationService {
 				operation.getDeductionAmount()));
 	}
 
-	private static MoneyCalculationInput toMoneyInput(
+	private MoneyCalculationInput toMoneyInput(
 			RawFinancialOperation operation,
 			FinancialOperationType operationType) {
 		return new MoneyCalculationInput(
@@ -167,6 +175,7 @@ public class DailyFinanceRecalculationService {
 				operation.getLogisticsAmount(),
 				operation.getRebillLogisticsAmount(),
 				operation.getPvzRewardAmount(),
+				operationClassifier.isPvzRewardLogisticsOperation(operation.getSupplierOperationName()),
 				operation.getStorageAmount(),
 				operation.getAcceptanceAmount(),
 				operation.getPenaltyAmount(),
@@ -196,6 +205,7 @@ public class DailyFinanceRecalculationService {
 	private static final class DayAccumulator {
 
 		private final LocalDate businessDate;
+		private final Map<OrderProductKey, OrderProductAccumulator> orderProducts = new LinkedHashMap<>();
 		private final Map<Long, ProductAccumulator> products = new LinkedHashMap<>();
 		private final Map<String, OrderLogisticsAccumulator> orderLogistics = new LinkedHashMap<>();
 		private BigDecimal commonAcquiring = ZERO;
@@ -220,11 +230,12 @@ public class DailyFinanceRecalculationService {
 			commonDeductions = commonDeductions.add(money.deductionAmount());
 
 			if (hasProduct(operation)) {
-				products.computeIfAbsent(operation.getNmId(), ProductAccumulator::new)
+				OrderProductKey orderProductKey = OrderProductKey.from(operation);
+				orderProducts.computeIfAbsent(orderProductKey, OrderProductAccumulator::new)
 						.add(operationType, money);
 				if (hasOrder(operation)) {
 					orderLogistics.computeIfAbsent(operation.getSrid(), OrderLogisticsAccumulator::new)
-							.addProduct(operation.getNmId());
+							.addProduct(orderProductKey);
 				}
 				return;
 			}
@@ -239,22 +250,58 @@ public class DailyFinanceRecalculationService {
 			unassignedDayLogistics = unassignedDayLogistics.add(money.logisticsAmount());
 		}
 
-		private void distributeUnassignedLogistics() {
+		private void prepareProductRows() {
+			distributeOrderLogistics();
+			aggregateOrderProducts();
+			distributeUnassignedDayLogistics();
+		}
+
+		private void distributeOrderLogistics() {
 			for (OrderLogisticsAccumulator order : orderLogistics.values()) {
 				if (order.logistics.compareTo(ZERO) == 0) {
 					continue;
 				}
-				if (order.productIds.isEmpty()) {
+				if (order.productKeys.isEmpty()) {
 					unassignedDayLogistics = unassignedDayLogistics.add(order.logistics);
 					continue;
 				}
-				distributeBetweenProducts(order.logistics, order.productIds);
+				distributeBetweenOrderProducts(order.logistics, order.productKeys);
 			}
+		}
+
+		private void aggregateOrderProducts() {
+			for (OrderProductAccumulator orderProduct : orderProducts.values()) {
+				products.computeIfAbsent(orderProduct.nmId(), ProductAccumulator::new)
+						.add(orderProduct);
+			}
+		}
+
+		private void distributeUnassignedDayLogistics() {
 			if (unassignedDayLogistics.compareTo(ZERO) == 0 || products.isEmpty()) {
 				return;
 			}
 			distributeBetweenProducts(unassignedDayLogistics, products.keySet());
 			unassignedDayLogistics = ZERO;
+		}
+
+		private void distributeBetweenOrderProducts(BigDecimal amount, Iterable<OrderProductKey> orderProductKeys) {
+			List<OrderProductKey> keys = new java.util.ArrayList<>();
+			for (OrderProductKey key : orderProductKeys) {
+				keys.add(key);
+			}
+			BigDecimal productCount = BigDecimal.valueOf(keys.size());
+			BigDecimal baseShare = amount.divide(productCount, 2, RoundingMode.DOWN);
+			BigDecimal distributed = ZERO;
+			int index = 0;
+			for (OrderProductKey key : keys) {
+				index++;
+				BigDecimal share = index == keys.size()
+						? amount.subtract(distributed)
+						: baseShare;
+				OrderProductAccumulator orderProduct = orderProducts.get(key);
+				orderProduct.logistics = orderProduct.logistics.add(share);
+				distributed = distributed.add(share);
+			}
 		}
 
 		private void distributeBetweenProducts(BigDecimal amount, Iterable<Long> productIds) {
@@ -281,19 +328,56 @@ public class DailyFinanceRecalculationService {
 	private static final class OrderLogisticsAccumulator {
 
 		private final String srid;
-		private final java.util.Set<Long> productIds = new java.util.LinkedHashSet<>();
+		private final Set<OrderProductKey> productKeys = new java.util.LinkedHashSet<>();
 		private BigDecimal logistics = ZERO;
 
 		private OrderLogisticsAccumulator(String srid) {
 			this.srid = srid;
 		}
 
-		private void addProduct(Long nmId) {
-			productIds.add(nmId);
+		private void addProduct(OrderProductKey orderProductKey) {
+			productKeys.add(orderProductKey);
 		}
 
 		private void addLogistics(BigDecimal amount) {
 			logistics = logistics.add(amount);
+		}
+	}
+
+	private record OrderProductKey(String srid, Long nmId) {
+
+		private static OrderProductKey from(RawFinancialOperation operation) {
+			return new OrderProductKey(operation.getSrid(), operation.getNmId());
+		}
+	}
+
+	private static final class OrderProductAccumulator {
+
+		private final OrderProductKey key;
+		private int salesQuantity;
+		private int returnQuantity;
+		private BigDecimal salesAmount = ZERO;
+		private BigDecimal returnsAmount = ZERO;
+		private BigDecimal commission = ZERO;
+		private BigDecimal logistics = ZERO;
+
+		private OrderProductAccumulator(OrderProductKey key) {
+			this.key = key;
+		}
+
+		private Long nmId() {
+			return key.nmId();
+		}
+
+		private void add(FinancialOperationType operationType, MoneyCalculationResult money) {
+			if (operationType == FinancialOperationType.SALE || operationType == FinancialOperationType.RETURN) {
+				salesQuantity += money.salesQuantity();
+				returnQuantity += money.returnQuantity();
+				salesAmount = salesAmount.add(money.salesAmount());
+				returnsAmount = returnsAmount.add(money.returnsAmount());
+				commission = commission.add(money.commissionAmount());
+			}
+			logistics = logistics.add(money.logisticsAmount());
 		}
 	}
 
@@ -312,15 +396,13 @@ public class DailyFinanceRecalculationService {
 			this.nmId = nmId;
 		}
 
-		private void add(FinancialOperationType operationType, MoneyCalculationResult money) {
-			if (operationType == FinancialOperationType.SALE || operationType == FinancialOperationType.RETURN) {
-				salesQuantity += money.salesQuantity();
-				returnQuantity += money.returnQuantity();
-				salesAmount = salesAmount.add(money.salesAmount());
-				returnsAmount = returnsAmount.add(money.returnsAmount());
-				commission = commission.add(money.commissionAmount());
-			}
-			logistics = logistics.add(money.logisticsAmount());
+		private void add(OrderProductAccumulator orderProduct) {
+			salesQuantity += orderProduct.salesQuantity;
+			returnQuantity += orderProduct.returnQuantity;
+			salesAmount = salesAmount.add(orderProduct.salesAmount);
+			returnsAmount = returnsAmount.add(orderProduct.returnsAmount);
+			commission = commission.add(orderProduct.commission);
+			logistics = logistics.add(orderProduct.logistics);
 		}
 
 		private int netQuantity() {

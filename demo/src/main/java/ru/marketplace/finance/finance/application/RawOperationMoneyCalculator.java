@@ -82,7 +82,7 @@ public class RawOperationMoneyCalculator {
 		}
 		return abs(input.logisticsAmount())
 				.add(abs(input.rebillLogisticsAmount()))
-				.add(abs(input.pvzRewardAmount()));
+				.add(input.includePvzRewardInLogistics() ? abs(input.pvzRewardAmount()) : ZERO);
 	}
 
 	private static boolean isPositive(BigDecimal value) {

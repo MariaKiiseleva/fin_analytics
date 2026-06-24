@@ -9,5 +9,6 @@ public enum FinancialOperationType {
 	ACCEPTANCE,
 	PENALTY,
 	DEDUCTION,
+	COMPENSATION,
 	UNRECOGNIZED
 }

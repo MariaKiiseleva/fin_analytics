@@ -21,6 +21,7 @@ class RawOperationMoneyCalculatorTest {
 				null,
 				null,
 				null,
+				false,
 				null,
 				null,
 				null,
@@ -46,6 +47,7 @@ class RawOperationMoneyCalculatorTest {
 				null,
 				null,
 				null,
+				false,
 				null,
 				null,
 				null,
@@ -70,6 +72,7 @@ class RawOperationMoneyCalculatorTest {
 				null,
 				null,
 				null,
+				false,
 				null,
 				null,
 				null,
@@ -91,6 +94,7 @@ class RawOperationMoneyCalculatorTest {
 				"120.00",
 				"30.00",
 				"15.00",
+				true,
 				null,
 				null,
 				null,
@@ -99,6 +103,27 @@ class RawOperationMoneyCalculatorTest {
 		assertThat(result.logisticsAmount()).isEqualByComparingTo("165.00");
 		assertThat(result.salesAmount()).isEqualByComparingTo("0");
 		assertThat(result.commissionAmount()).isEqualByComparingTo("0");
+	}
+
+	@Test
+	void doesNotAddPvzRewardToEveryLogisticsOperation() {
+		MoneyCalculationResult result = calculator.calculate(input(
+				FinancialOperationType.LOGISTICS,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"120.00",
+				"30.00",
+				"15.00",
+				false,
+				null,
+				null,
+				null,
+				null));
+
+		assertThat(result.logisticsAmount()).isEqualByComparingTo("150.00");
 	}
 
 	@Test
@@ -113,6 +138,7 @@ class RawOperationMoneyCalculatorTest {
 				null,
 				null,
 				null,
+				false,
 				"-20.00",
 				"30.00",
 				"-40.00",
@@ -135,6 +161,7 @@ class RawOperationMoneyCalculatorTest {
 			String logisticsAmount,
 			String rebillLogisticsAmount,
 			String pvzRewardAmount,
+			boolean includePvzRewardInLogistics,
 			String storageAmount,
 			String acceptanceAmount,
 			String penaltyAmount,
@@ -149,6 +176,7 @@ class RawOperationMoneyCalculatorTest {
 				amount(logisticsAmount),
 				amount(rebillLogisticsAmount),
 				amount(pvzRewardAmount),
+				includePvzRewardInLogistics,
 				amount(storageAmount),
 				amount(acceptanceAmount),
 				amount(penaltyAmount),

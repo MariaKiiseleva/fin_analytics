@@ -14,6 +14,11 @@ class FinancialOperationClassifierTest {
 		assertThat(classify("Продажа", null)).isEqualTo(FinancialOperationType.SALE);
 		assertThat(classify("Корректная продажа", null)).isEqualTo(FinancialOperationType.SALE);
 		assertThat(classify("Коррекция продаж", null)).isEqualTo(FinancialOperationType.SALE);
+		assertThat(classify("Частичная компенсация брака", null)).isEqualTo(FinancialOperationType.SALE);
+		assertThat(classify("Компенсация подмененного товара", null)).isEqualTo(FinancialOperationType.SALE);
+		assertThat(classify("Оплата брака", null)).isEqualTo(FinancialOperationType.SALE);
+		assertThat(classify("Оплата потерянного товара", null)).isEqualTo(FinancialOperationType.SALE);
+		assertThat(classify("Авансовая оплата за товар без движения", null)).isEqualTo(FinancialOperationType.SALE);
 	}
 
 	@Test
@@ -26,6 +31,11 @@ class FinancialOperationClassifierTest {
 	@Test
 	void classifiesLogisticsAndStorage() {
 		assertThat(classify("Логистика", null)).isEqualTo(FinancialOperationType.LOGISTICS);
+		assertThat(classify("Логистика сторно", null)).isEqualTo(FinancialOperationType.LOGISTICS);
+		assertThat(classify("Коррекция логистики", null)).isEqualTo(FinancialOperationType.LOGISTICS);
+		assertThat(classify("Возмещение издержек по перевозке", null)).isEqualTo(FinancialOperationType.LOGISTICS);
+		assertThat(classify("Возмещение издержек по перевозке/по складским операциям с товаром", null))
+				.isEqualTo(FinancialOperationType.LOGISTICS);
 		assertThat(classify("Возмещение за выдачу и возврат товаров на ПВЗ", null))
 				.isEqualTo(FinancialOperationType.LOGISTICS);
 		assertThat(classify("Хранение", null)).isEqualTo(FinancialOperationType.STORAGE);
@@ -43,6 +53,11 @@ class FinancialOperationClassifierTest {
 				.isEqualTo(FinancialOperationType.PENALTY);
 		assertThat(classifier.classify(input(null, null, null, null, null, null, "10.00")))
 				.isEqualTo(FinancialOperationType.DEDUCTION);
+	}
+
+	@Test
+	void classifiesDamageCompensationSeparately() {
+		assertThat(classify("Компенсация ущерба", null)).isEqualTo(FinancialOperationType.COMPENSATION);
 	}
 
 	@Test

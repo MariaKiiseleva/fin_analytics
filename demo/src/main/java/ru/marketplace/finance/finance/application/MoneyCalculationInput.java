@@ -12,6 +12,7 @@ public record MoneyCalculationInput(
 		BigDecimal logisticsAmount,
 		BigDecimal rebillLogisticsAmount,
 		BigDecimal pvzRewardAmount,
+		boolean includePvzRewardInLogistics,
 		BigDecimal storageAmount,
 		BigDecimal acceptanceAmount,
 		BigDecimal penaltyAmount,

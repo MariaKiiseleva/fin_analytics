@@ -6,6 +6,8 @@ import java.util.Set;
 
 public class FinancialOperationClassifier {
 
+	private static final String PVZ_REWARD_OPERATION = "возмещение за выдачу и возврат товаров на пвз";
+
 	private static final Set<String> SALE_NAMES = Set.of(
 			"продажа",
 			"корректная продажа",
@@ -22,10 +24,24 @@ public class FinancialOperationClassifier {
 			"корректный возврат",
 			"сторно продаж");
 
+	private static final Set<String> LOGISTICS_NAMES = Set.of(
+			"логистика",
+			"логистика сторно",
+			"коррекция логистики",
+			"возмещение издержек по перевозке",
+			"возмещение издержек по перевозке/по складским операциям с товаром",
+			PVZ_REWARD_OPERATION);
+
+	private static final Set<String> COMPENSATION_NAMES = Set.of(
+			"компенсация ущерба");
+
 	public FinancialOperationType classify(FinancialOperationClassificationInput input) {
 		String operation = normalize(input.supplierOperationName());
 		String document = normalize(input.documentType());
 
+		if (COMPENSATION_NAMES.contains(operation)) {
+			return FinancialOperationType.COMPENSATION;
+		}
 		if (RETURN_NAMES.contains(operation) || document.contains("возврат")) {
 			return FinancialOperationType.RETURN;
 		}
@@ -35,7 +51,8 @@ public class FinancialOperationClassifier {
 		if (operation.equals("хранение") || nonZero(input.storageAmount())) {
 			return FinancialOperationType.STORAGE;
 		}
-		if (containsAny(operation, "логист", "перевоз", "пвз", "склад")) {
+		if (LOGISTICS_NAMES.contains(operation)
+				|| containsAny(operation, "логист", "перевоз", "складск", "пвз")) {
 			return FinancialOperationType.LOGISTICS;
 		}
 		if (nonZero(input.acquiringAmount())) {
@@ -71,5 +88,9 @@ public class FinancialOperationClassifier {
 
 	private static boolean nonZero(BigDecimal value) {
 		return value != null && value.compareTo(BigDecimal.ZERO) != 0;
+	}
+
+	public boolean isPvzRewardLogisticsOperation(String supplierOperationName) {
+		return PVZ_REWARD_OPERATION.equals(normalize(supplierOperationName));
 	}
 }
