@@ -1,0 +1,334 @@
+package ru.marketplace.finance.finance.application;
+
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import ru.marketplace.finance.account.domain.User;
+import ru.marketplace.finance.account.infrastructure.UserRepository;
+import ru.marketplace.finance.cost.infrastructure.ProductCostRepository;
+import ru.marketplace.finance.finance.domain.DailyFinanceEntry;
+import ru.marketplace.finance.finance.domain.RawFinancialOperation;
+import ru.marketplace.finance.finance.infrastructure.persistence.DailyFinanceEntryRepository;
+import ru.marketplace.finance.finance.infrastructure.persistence.RawFinancialOperationRepository;
+
+@Service
+public class DailyFinanceRecalculationService {
+
+	private static final int CALCULATION_VERSION = 1;
+	private static final BigDecimal ZERO = BigDecimal.ZERO;
+	private static final BigDecimal ONE_HUNDRED = new BigDecimal("100");
+
+	private final UserRepository userRepository;
+	private final ProductCostRepository productCostRepository;
+	private final RawFinancialOperationRepository rawRepository;
+	private final DailyFinanceEntryRepository dailyRepository;
+	private final FinancialOperationClassifier operationClassifier = new FinancialOperationClassifier();
+	private final RawOperationMoneyCalculator moneyCalculator = new RawOperationMoneyCalculator();
+	private final ProductProfitCalculator profitCalculator = new ProductProfitCalculator();
+
+	public DailyFinanceRecalculationService(
+			UserRepository userRepository,
+			ProductCostRepository productCostRepository,
+			RawFinancialOperationRepository rawRepository,
+			DailyFinanceEntryRepository dailyRepository) {
+		this.userRepository = userRepository;
+		this.productCostRepository = productCostRepository;
+		this.rawRepository = rawRepository;
+		this.dailyRepository = dailyRepository;
+	}
+
+	@Transactional
+	public DailyFinanceRecalculationResult recalculate(Long userId, LocalDate dateFrom, LocalDate dateTo) {
+		Objects.requireNonNull(dateFrom, "dateFrom must not be null");
+		Objects.requireNonNull(dateTo, "dateTo must not be null");
+		if (dateFrom.isAfter(dateTo)) {
+			throw new IllegalArgumentException("dateFrom must not be after dateTo");
+		}
+		User user = userRepository.findById(userId)
+				.orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+		List<RawFinancialOperation> operations = rawRepository
+				.findByUserIdAndBusinessDateBetweenOrderByBusinessDateAscIdAsc(userId, dateFrom, dateTo);
+		Map<LocalDate, DayAccumulator> days = createDays(dateFrom, dateTo);
+
+		for (RawFinancialOperation operation : operations) {
+			FinancialOperationType operationType = classify(operation);
+			MoneyCalculationResult money = moneyCalculator.calculate(toMoneyInput(operation, operationType));
+			days.get(operation.getBusinessDate()).add(operation, operationType, money);
+		}
+
+		dailyRepository.deleteByUserIdAndBusinessDateBetween(userId, dateFrom, dateTo);
+		int savedRows = 0;
+		for (DayAccumulator day : days.values()) {
+			savedRows += saveDay(user, day);
+		}
+
+		return new DailyFinanceRecalculationResult(operations.size(), days.size(), savedRows);
+	}
+
+	private int saveDay(User user, DayAccumulator day) {
+		day.distributeUnassignedLogistics();
+		DailyFinanceEntry commonRow = DailyFinanceEntry.commonRow(user.getId(), day.businessDate, CALCULATION_VERSION);
+		commonRow.replaceCommonExpenses(
+				day.commonAcquiring,
+				day.commonStorage,
+				day.commonAcceptance,
+				day.commonPenalty,
+				day.commonDeductions.add(day.unassignedDayLogistics));
+		dailyRepository.save(commonRow);
+
+		int savedRows = 1;
+		for (ProductAccumulator product : day.products.values()) {
+			BigDecimal costAmount = resolveCostAmount(user.getId(), product, day.businessDate);
+			BigDecimal taxAmount = calculateTax(product.netRevenue(), user.getTaxPercent());
+			BigDecimal profitAmount = profitCalculator.calculate(new ProductProfitInput(
+					product.netRevenue(),
+					product.commission,
+					product.logistics,
+					costAmount,
+					taxAmount));
+			DailyFinanceEntry productRow = DailyFinanceEntry.productRow(
+					user.getId(),
+					day.businessDate,
+					product.nmId,
+					null,
+					CALCULATION_VERSION);
+			productRow.replaceProductTotals(
+					product.salesQuantity,
+					product.returnQuantity,
+					product.salesAmount,
+					product.returnsAmount,
+					product.commission,
+					product.logistics,
+					costAmount,
+					taxAmount,
+					profitAmount,
+					product.hasCost);
+			dailyRepository.save(productRow);
+			savedRows++;
+		}
+		return savedRows;
+	}
+
+	private BigDecimal resolveCostAmount(Long userId, ProductAccumulator product, LocalDate businessDate) {
+		if (product.netQuantity() <= 0) {
+			product.hasCost = true;
+			return ZERO;
+		}
+		return productCostRepository
+				.findFirstByUserIdAndNmIdAndValidFromLessThanEqualOrderByValidFromDesc(
+						userId,
+						product.nmId,
+						businessDate)
+				.map(cost -> cost.getCostAmount().multiply(BigDecimal.valueOf(product.netQuantity())))
+				.map(DailyFinanceRecalculationService::money)
+				.orElseGet(() -> {
+					product.hasCost = false;
+					return ZERO;
+				});
+	}
+
+	private static Map<LocalDate, DayAccumulator> createDays(LocalDate dateFrom, LocalDate dateTo) {
+		Map<LocalDate, DayAccumulator> days = new LinkedHashMap<>();
+		LocalDate current = dateFrom;
+		while (!current.isAfter(dateTo)) {
+			days.put(current, new DayAccumulator(current));
+			current = current.plusDays(1);
+		}
+		return days;
+	}
+
+	private FinancialOperationType classify(RawFinancialOperation operation) {
+		return operationClassifier.classify(new FinancialOperationClassificationInput(
+				operation.getSupplierOperationName(),
+				operation.getDocumentType(),
+				operation.getAcquiringAmount(),
+				operation.getStorageAmount(),
+				operation.getAcceptanceAmount(),
+				operation.getPenaltyAmount(),
+				operation.getDeductionAmount()));
+	}
+
+	private static MoneyCalculationInput toMoneyInput(
+			RawFinancialOperation operation,
+			FinancialOperationType operationType) {
+		return new MoneyCalculationInput(
+				operationType,
+				operation.getQuantity(),
+				operation.getRetailAmount(),
+				operation.getRetailAmountWithDiscount(),
+				operation.getSellerAmount(),
+				operation.getAcquiringAmount(),
+				operation.getLogisticsAmount(),
+				operation.getRebillLogisticsAmount(),
+				operation.getPvzRewardAmount(),
+				operation.getStorageAmount(),
+				operation.getAcceptanceAmount(),
+				operation.getPenaltyAmount(),
+				operation.getDeductionAmount());
+	}
+
+	private static BigDecimal calculateTax(BigDecimal netRevenue, BigDecimal taxPercent) {
+		if (netRevenue.compareTo(ZERO) <= 0 || taxPercent == null || taxPercent.compareTo(ZERO) == 0) {
+			return ZERO;
+		}
+		return netRevenue.multiply(taxPercent)
+				.divide(ONE_HUNDRED, 2, RoundingMode.HALF_UP);
+	}
+
+	private static boolean hasProduct(RawFinancialOperation operation) {
+		return operation.getNmId() != null && operation.getNmId() > 0;
+	}
+
+	private static boolean hasOrder(RawFinancialOperation operation) {
+		return operation.getSrid() != null && !operation.getSrid().isBlank();
+	}
+
+	private static BigDecimal money(BigDecimal value) {
+		return value.setScale(2, RoundingMode.HALF_UP);
+	}
+
+	private static final class DayAccumulator {
+
+		private final LocalDate businessDate;
+		private final Map<Long, ProductAccumulator> products = new LinkedHashMap<>();
+		private final Map<String, OrderLogisticsAccumulator> orderLogistics = new LinkedHashMap<>();
+		private BigDecimal commonAcquiring = ZERO;
+		private BigDecimal commonStorage = ZERO;
+		private BigDecimal commonAcceptance = ZERO;
+		private BigDecimal commonPenalty = ZERO;
+		private BigDecimal commonDeductions = ZERO;
+		private BigDecimal unassignedDayLogistics = ZERO;
+
+		private DayAccumulator(LocalDate businessDate) {
+			this.businessDate = businessDate;
+		}
+
+		private void add(
+				RawFinancialOperation operation,
+				FinancialOperationType operationType,
+				MoneyCalculationResult money) {
+			commonAcquiring = commonAcquiring.add(money.acquiringAmount());
+			commonStorage = commonStorage.add(money.storageAmount());
+			commonAcceptance = commonAcceptance.add(money.acceptanceAmount());
+			commonPenalty = commonPenalty.add(money.penaltyAmount());
+			commonDeductions = commonDeductions.add(money.deductionAmount());
+
+			if (hasProduct(operation)) {
+				products.computeIfAbsent(operation.getNmId(), ProductAccumulator::new)
+						.add(operationType, money);
+				if (hasOrder(operation)) {
+					orderLogistics.computeIfAbsent(operation.getSrid(), OrderLogisticsAccumulator::new)
+							.addProduct(operation.getNmId());
+				}
+				return;
+			}
+			if (money.logisticsAmount().compareTo(ZERO) == 0) {
+				return;
+			}
+			if (hasOrder(operation)) {
+				orderLogistics.computeIfAbsent(operation.getSrid(), OrderLogisticsAccumulator::new)
+						.addLogistics(money.logisticsAmount());
+				return;
+			}
+			unassignedDayLogistics = unassignedDayLogistics.add(money.logisticsAmount());
+		}
+
+		private void distributeUnassignedLogistics() {
+			for (OrderLogisticsAccumulator order : orderLogistics.values()) {
+				if (order.logistics.compareTo(ZERO) == 0) {
+					continue;
+				}
+				if (order.productIds.isEmpty()) {
+					unassignedDayLogistics = unassignedDayLogistics.add(order.logistics);
+					continue;
+				}
+				distributeBetweenProducts(order.logistics, order.productIds);
+			}
+			if (unassignedDayLogistics.compareTo(ZERO) == 0 || products.isEmpty()) {
+				return;
+			}
+			distributeBetweenProducts(unassignedDayLogistics, products.keySet());
+			unassignedDayLogistics = ZERO;
+		}
+
+		private void distributeBetweenProducts(BigDecimal amount, Iterable<Long> productIds) {
+			List<Long> ids = new java.util.ArrayList<>();
+			for (Long productId : productIds) {
+				ids.add(productId);
+			}
+			BigDecimal productCount = BigDecimal.valueOf(ids.size());
+			BigDecimal baseShare = amount.divide(productCount, 2, RoundingMode.DOWN);
+			BigDecimal distributed = ZERO;
+			int index = 0;
+			for (Long productId : ids) {
+				index++;
+				BigDecimal share = index == ids.size()
+						? amount.subtract(distributed)
+						: baseShare;
+				ProductAccumulator product = products.get(productId);
+				product.logistics = product.logistics.add(share);
+				distributed = distributed.add(share);
+			}
+		}
+	}
+
+	private static final class OrderLogisticsAccumulator {
+
+		private final String srid;
+		private final java.util.Set<Long> productIds = new java.util.LinkedHashSet<>();
+		private BigDecimal logistics = ZERO;
+
+		private OrderLogisticsAccumulator(String srid) {
+			this.srid = srid;
+		}
+
+		private void addProduct(Long nmId) {
+			productIds.add(nmId);
+		}
+
+		private void addLogistics(BigDecimal amount) {
+			logistics = logistics.add(amount);
+		}
+	}
+
+	private static final class ProductAccumulator {
+
+		private final Long nmId;
+		private int salesQuantity;
+		private int returnQuantity;
+		private BigDecimal salesAmount = ZERO;
+		private BigDecimal returnsAmount = ZERO;
+		private BigDecimal commission = ZERO;
+		private BigDecimal logistics = ZERO;
+		private boolean hasCost = true;
+
+		private ProductAccumulator(Long nmId) {
+			this.nmId = nmId;
+		}
+
+		private void add(FinancialOperationType operationType, MoneyCalculationResult money) {
+			if (operationType == FinancialOperationType.SALE || operationType == FinancialOperationType.RETURN) {
+				salesQuantity += money.salesQuantity();
+				returnQuantity += money.returnQuantity();
+				salesAmount = salesAmount.add(money.salesAmount());
+				returnsAmount = returnsAmount.add(money.returnsAmount());
+				commission = commission.add(money.commissionAmount());
+			}
+			logistics = logistics.add(money.logisticsAmount());
+		}
+
+		private int netQuantity() {
+			return salesQuantity - returnQuantity;
+		}
+
+		private BigDecimal netRevenue() {
+			return salesAmount.subtract(returnsAmount);
+		}
+	}
+}
