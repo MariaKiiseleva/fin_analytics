@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
 import org.springframework.stereotype.Service;
+import ru.marketplace.finance.account.application.MarketplaceCredentialService;
 import ru.marketplace.finance.finance.application.DailyFinanceRecalculationResult;
 import ru.marketplace.finance.finance.application.DailyFinanceRecalculationService;
 import ru.marketplace.finance.finance.application.RawFinancialOperationImportResult;
@@ -27,18 +28,26 @@ public class WbFinanceSyncService {
 	private final WbRealizationReportDetailMapper mapper;
 	private final RawFinancialOperationImportService importService;
 	private final DailyFinanceRecalculationService recalculationService;
+	private final MarketplaceCredentialService credentialService;
 
 	public WbFinanceSyncService(
 			SyncJobRepository syncJobRepository,
 			WbReportDetailClient wbReportDetailClient,
 			WbRealizationReportDetailMapper mapper,
 			RawFinancialOperationImportService importService,
-			DailyFinanceRecalculationService recalculationService) {
+			DailyFinanceRecalculationService recalculationService,
+			MarketplaceCredentialService credentialService) {
 		this.syncJobRepository = syncJobRepository;
 		this.wbReportDetailClient = wbReportDetailClient;
 		this.mapper = mapper;
 		this.importService = importService;
 		this.recalculationService = recalculationService;
+		this.credentialService = credentialService;
+	}
+
+	public WbFinanceSyncResult syncWithSavedToken(Long userId, LocalDate dateFrom, LocalDate dateTo) {
+		String token = credentialService.getActiveWildberriesToken(userId);
+		return sync(userId, token, dateFrom, dateTo);
 	}
 
 	public WbFinanceSyncResult sync(Long userId, String token, LocalDate dateFrom, LocalDate dateTo) {

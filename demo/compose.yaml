@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-marketplace}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-marketplace}
     ports:
-      - "5432:5432"
+      - "5433:5432"
     healthcheck:
       test:
         [

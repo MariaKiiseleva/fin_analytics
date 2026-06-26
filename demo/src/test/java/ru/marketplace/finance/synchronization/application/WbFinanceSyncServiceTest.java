@@ -3,6 +3,7 @@ package ru.marketplace.finance.synchronization.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -20,6 +21,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import ru.marketplace.finance.account.application.MarketplaceCredentialService;
 import ru.marketplace.finance.account.domain.User;
 import ru.marketplace.finance.account.infrastructure.UserRepository;
 import ru.marketplace.finance.cost.domain.ProductCost;
@@ -69,10 +71,58 @@ class WbFinanceSyncServiceTest {
 	SyncJobRepository syncJobRepository;
 
 	@Autowired
+	MarketplaceCredentialService credentialService;
+
+	@Autowired
 	WbFinanceSyncService syncService;
 
 	@MockitoBean
 	WbReportDetailClient wbReportDetailClient;
+
+	@Test
+	void syncsUsingSavedWildberriesToken() {
+		LocalDate businessDate = LocalDate.of(2026, 6, 17);
+		User user = userRepository.saveAndFlush(new User(
+				"seller-sync-saved-token@example.com",
+				"$2a$10$hash",
+				"Seller"));
+		credentialService.saveWildberriesToken(user.getId(), "saved-read-only-token");
+		when(wbReportDetailClient.fetchReportDetailByPeriod(
+				eq("saved-read-only-token"),
+				eq(businessDate),
+				eq(businessDate),
+				eq("daily"),
+				eq(5_000),
+				eq(50)))
+				.thenReturn(List.of(saleRow()));
+
+		WbFinanceSyncResult result = syncService.syncWithSavedToken(
+				user.getId(),
+				businessDate,
+				businessDate);
+
+		assertThat(result.receivedRows()).isEqualTo(1);
+		assertThat(result.insertedRows()).isEqualTo(1);
+		assertThat(result.affectedDays()).isEqualTo(1);
+		assertThat(syncJobRepository.findById(result.syncJobId()).orElseThrow().getStatus())
+				.isEqualTo(SyncStatus.COMPLETED);
+	}
+
+	@Test
+	void doesNotCreateSyncJobWhenSavedTokenIsMissing() {
+		LocalDate businessDate = LocalDate.of(2026, 6, 18);
+		User user = userRepository.saveAndFlush(new User(
+				"seller-sync-without-token@example.com",
+				"$2a$10$hash",
+				"Seller"));
+
+		assertThatThrownBy(() -> syncService.syncWithSavedToken(user.getId(), businessDate, businessDate))
+				.isInstanceOf(IllegalArgumentException.class)
+				.hasMessageContaining("Active Wildberries credential not found");
+
+		assertThat(syncJobRepository.findByUserIdOrderByRequestedAtDesc(user.getId())).isEmpty();
+		verifyNoInteractions(wbReportDetailClient);
+	}
 
 	@Test
 	void syncsWbReportRowsIntoRawOperationsAndDailyFinanceEntries() {

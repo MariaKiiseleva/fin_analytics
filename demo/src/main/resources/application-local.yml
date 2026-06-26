@@ -1,6 +1,6 @@
 spring:
   datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/marketplace_finance}
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/marketplace_finance}
     username: ${SPRING_DATASOURCE_USERNAME:marketplace}
     password: ${SPRING_DATASOURCE_PASSWORD:marketplace}
   jpa:

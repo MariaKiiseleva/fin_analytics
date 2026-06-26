@@ -12,3 +12,7 @@ management:
     web:
       exposure:
         include: health
+
+app:
+  security:
+    token-encryption-key: ${WB_TOKEN_ENCRYPTION_KEY:}

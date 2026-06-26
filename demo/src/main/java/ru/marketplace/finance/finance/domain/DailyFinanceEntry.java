@@ -152,6 +152,14 @@ public class DailyFinanceEntry {
 		return netQuantity;
 	}
 
+	public BigDecimal getSalesAmount() {
+		return salesAmount;
+	}
+
+	public BigDecimal getReturnsAmount() {
+		return returnsAmount;
+	}
+
 	public BigDecimal getNetRevenueAmount() {
 		return netRevenueAmount;
 	}
