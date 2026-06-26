@@ -27,4 +27,9 @@ public class WbClientConfiguration {
 				maxRetries,
 				Duration.ofMillis(retryDelayMs));
 	}
+
+	@Bean
+	WbRealizationReportDetailMapper wbRealizationReportDetailMapper(ObjectMapper objectMapper) {
+		return new WbRealizationReportDetailMapper(objectMapper);
+	}
 }

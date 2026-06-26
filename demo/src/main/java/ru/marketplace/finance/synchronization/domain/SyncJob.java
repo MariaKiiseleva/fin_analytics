@@ -166,6 +166,12 @@ public class SyncJob {
 		this.affectedDays = requireNonNegative(affectedDays, "affectedDays");
 	}
 
+	public void markDailyRecalculated(int affectedDays, int unrecognizedRows) {
+		this.status = SyncStatus.DAILY_RECALCULATED;
+		this.affectedDays = requireNonNegative(affectedDays, "affectedDays");
+		this.unrecognizedRows = requireNonNegative(unrecognizedRows, "unrecognizedRows");
+	}
+
 	public void markCompleted() {
 		this.status = SyncStatus.COMPLETED;
 		this.finishedAt = Instant.now();
