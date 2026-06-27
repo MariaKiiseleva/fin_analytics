@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -63,7 +64,7 @@ class ProductCostServiceTest {
 		assertThat(updated.id()).isEqualTo(created.id());
 		assertThat(updated.productName()).isEqualTo("Updated product");
 		assertThat(updated.costAmount()).isEqualByComparingTo("720.00");
-		assertThat(productCostRepository.findAll()).hasSize(1);
+		assertThat(productCostService.findProductCosts(user.getId(), 125167917L)).hasSize(1);
 	}
 
 	@Test
@@ -85,6 +86,41 @@ class ProductCostServiceTest {
 		assertThat(productCostService.findProductCosts(user.getId(), 125167917L))
 				.extracting(ProductCostView::costAmount)
 				.containsExactly(new BigDecimal("720.00"), new BigDecimal("650.00"));
+	}
+
+	@Test
+	void savesProductCostsBatchAndUpdatesExistingRows() {
+		User user = userRepository.saveAndFlush(new User("seller-cost-batch@example.com", "$2a$10$hash", "Seller"));
+		LocalDate validFrom = LocalDate.of(2026, 6, 1);
+		productCostService.saveProductCost(
+				user.getId(),
+				125167917L,
+				"Old product",
+				validFrom,
+				new BigDecimal("650.00"));
+
+		List<ProductCostView> saved = productCostService.saveProductCosts(
+				user.getId(),
+				List.of(
+						new ProductCostSaveCommand(
+								125167917L,
+								"Updated product",
+								validFrom,
+								new BigDecimal("720.00")),
+						new ProductCostSaveCommand(
+								164230893L,
+								"Second product",
+								validFrom,
+								new BigDecimal("300.00"))));
+
+		assertThat(saved).hasSize(2);
+		assertThat(productCostService.findProductCosts(user.getId(), 164230893L)).hasSize(1);
+		assertThat(productCostService.findProductCosts(user.getId(), 125167917L))
+				.singleElement()
+				.satisfies(cost -> {
+					assertThat(cost.productName()).isEqualTo("Updated product");
+					assertThat(cost.costAmount()).isEqualByComparingTo("720.00");
+				});
 	}
 
 	@Test

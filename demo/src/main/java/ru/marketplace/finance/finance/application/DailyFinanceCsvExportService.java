@@ -8,6 +8,7 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import ru.marketplace.finance.finance.domain.DailyFinanceEntry;
 import ru.marketplace.finance.finance.infrastructure.persistence.DailyFinanceEntryRepository;
+import ru.marketplace.finance.finance.infrastructure.persistence.MissingProductCostSummary;
 
 @Service
 public class DailyFinanceCsvExportService {
@@ -82,6 +83,43 @@ public class DailyFinanceCsvExportService {
 					value(entry.getTaxAmount()),
 					value(entry.getProductProfitAmount()),
 					value(entry.getHasCost())));
+		}
+
+		return csv.toString().getBytes(StandardCharsets.UTF_8);
+	}
+
+	public byte[] exportMissingProductCosts(Long userId, LocalDate dateFrom, LocalDate dateTo) {
+		if (dateFrom == null || dateTo == null) {
+			throw new IllegalArgumentException("dateFrom and dateTo must not be null");
+		}
+		if (dateFrom.isAfter(dateTo)) {
+			throw new IllegalArgumentException("dateFrom must not be after dateTo");
+		}
+		List<MissingProductCostSummary> rows = dailyRepository
+				.findMissingProductCostSummaries(userId, dateFrom, dateTo);
+
+		StringBuilder csv = new StringBuilder();
+		csv.append('\uFEFF');
+		appendRow(csv, List.of(
+				"nm_id",
+				"product_name",
+				"first_business_date",
+				"last_business_date",
+				"rows_count",
+				"net_quantity",
+				"valid_from",
+				"cost_amount_to_fill"));
+
+		for (MissingProductCostSummary row : rows) {
+			appendRow(csv, List.of(
+					value(row.getNmId()),
+					value(row.getProductName()),
+					value(row.getFirstBusinessDate()),
+					value(row.getLastBusinessDate()),
+					value(row.getRowsCount()),
+					value(row.getNetQuantity()),
+					value(dateFrom),
+					""));
 		}
 
 		return csv.toString().getBytes(StandardCharsets.UTF_8);

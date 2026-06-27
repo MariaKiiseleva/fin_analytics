@@ -45,6 +45,26 @@ public class ProductCostService {
 		return ProductCostView.from(productCostRepository.saveAndFlush(productCost));
 	}
 
+	@Transactional
+	public List<ProductCostView> saveProductCosts(Long userId, List<ProductCostSaveCommand> commands) {
+		requireExistingUser(userId);
+		Objects.requireNonNull(commands, "commands must not be null");
+		if (commands.isEmpty()) {
+			throw new IllegalArgumentException("commands must not be empty");
+		}
+
+		List<ProductCostView> saved = commands.stream()
+				.map(command -> saveProductCostAfterUserCheck(
+						userId,
+						command.nmId(),
+						command.productName(),
+						command.validFrom(),
+						command.costAmount()))
+				.toList();
+		productCostRepository.flush();
+		return saved;
+	}
+
 	@Transactional(readOnly = true)
 	public List<ProductCostView> findProductCosts(Long userId, Long nmId) {
 		requireExistingUser(userId);
@@ -52,6 +72,28 @@ public class ProductCostService {
 		return productCostRepository.findByUserIdAndNmIdOrderByValidFromDesc(userId, nmId).stream()
 				.map(ProductCostView::from)
 				.toList();
+	}
+
+	private ProductCostView saveProductCostAfterUserCheck(
+			Long userId,
+			Long nmId,
+			String productName,
+			LocalDate validFrom,
+			BigDecimal costAmount) {
+		requirePositive(nmId, "nmId");
+		Objects.requireNonNull(validFrom, "validFrom must not be null");
+		requireNonNegative(costAmount);
+
+		ProductCost productCost = productCostRepository
+				.findByUserIdAndNmIdAndValidFrom(userId, nmId, validFrom)
+				.map(existing -> {
+					existing.changeProductName(productName);
+					existing.changeCostAmount(costAmount);
+					return existing;
+				})
+				.orElseGet(() -> new ProductCost(userId, nmId, productName, validFrom, costAmount));
+
+		return ProductCostView.from(productCostRepository.save(productCost));
 	}
 
 	private void requireExistingUser(Long userId) {

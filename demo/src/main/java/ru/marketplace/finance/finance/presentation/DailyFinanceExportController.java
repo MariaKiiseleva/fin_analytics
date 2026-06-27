@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import ru.marketplace.finance.finance.application.DailyFinanceCsvExportService;
+import ru.marketplace.finance.finance.application.DailyFinanceXlsxExportService;
 
 @RestController
 @RequestMapping("/api/reports/daily")
@@ -20,9 +21,13 @@ import ru.marketplace.finance.finance.application.DailyFinanceCsvExportService;
 public class DailyFinanceExportController {
 
 	private final DailyFinanceCsvExportService csvExportService;
+	private final DailyFinanceXlsxExportService xlsxExportService;
 
-	public DailyFinanceExportController(DailyFinanceCsvExportService csvExportService) {
+	public DailyFinanceExportController(
+			DailyFinanceCsvExportService csvExportService,
+			DailyFinanceXlsxExportService xlsxExportService) {
 		this.csvExportService = csvExportService;
+		this.xlsxExportService = xlsxExportService;
 	}
 
 	@GetMapping(value = "/export.csv", produces = "text/csv")
@@ -38,6 +43,23 @@ public class DailyFinanceExportController {
 						.build()
 						.toString())
 				.contentType(new MediaType("text", "csv"))
+				.body(content);
+	}
+
+	@GetMapping(value = "/export.xlsx", produces = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	public ResponseEntity<byte[]> exportDailyReportXlsx(
+			@RequestParam @Positive Long userId,
+			@RequestParam @NotNull LocalDate dateFrom,
+			@RequestParam @NotNull LocalDate dateTo) {
+		byte[] content = xlsxExportService.exportDailyReport(userId, dateFrom, dateTo);
+		String filename = "daily-finance-%s-%s.xlsx".formatted(dateFrom, dateTo);
+		return ResponseEntity.ok()
+				.header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
+						.filename(filename)
+						.build()
+						.toString())
+				.contentType(MediaType.parseMediaType(
+						"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
 				.body(content);
 	}
 }

@@ -6,9 +6,13 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.io.ByteArrayInputStream;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -79,6 +83,42 @@ class DailyFinanceExportControllerTest {
 				"2026-06-21;123456789;Test Product;1;0;1;1000");
 		assertThat(csv).contains("2026-06-21;123456789;Test Product;1;0;1;1000");
 		assertThat(csv).contains(";100;0;700;true");
+	}
+
+	@Test
+	void exportsDailyReportAsXlsx() throws Exception {
+		User user = userRepository.saveAndFlush(new User(
+				"seller-xlsx-export@example.com",
+				"$2a$10$hash",
+				"Seller"));
+		dailyRepository.saveAndFlush(productRow(user.getId(), LocalDate.of(2026, 6, 21)));
+		dailyRepository.saveAndFlush(commonRow(user.getId(), LocalDate.of(2026, 6, 21)));
+
+		byte[] response = mockMvc.perform(get("/api/reports/daily/export.xlsx")
+						.with(user("seller"))
+						.param("userId", user.getId().toString())
+						.param("dateFrom", "2026-06-21")
+						.param("dateTo", "2026-06-21"))
+				.andExpect(status().isOk())
+				.andExpect(header().string(
+						"Content-Disposition",
+						"attachment; filename=\"daily-finance-2026-06-21-2026-06-21.xlsx\""))
+				.andReturn()
+				.getResponse()
+				.getContentAsByteArray();
+
+		try (Workbook workbook = new XSSFWorkbook(new ByteArrayInputStream(response))) {
+			Sheet sheet = workbook.getSheet("Report");
+			assertThat(sheet).isNotNull();
+			assertThat(sheet.getRow(0).getCell(0).getStringCellValue())
+					.isEqualTo("Финансовая аналитика - расширенный отчет");
+			assertThat(sheet.getRow(3).getCell(0).getStringCellValue()).isEqualTo("Товар");
+			assertThat(sheet.getRow(4).getCell(0).getStringCellValue()).isEqualTo("Test Product");
+			assertThat(sheet.getRow(4).getCell(1).getNumericCellValue()).isEqualTo(123456789D);
+			assertThat(sheet.getRow(4).getCell(10).getNumericCellValue()).isEqualTo(700D);
+			assertThat(sheet.getRow(5).getCell(0).getStringCellValue()).isEqualTo("Общие удержания");
+			assertThat(sheet.getRow(5).getCell(7).getNumericCellValue()).isEqualTo(250D);
+		}
 	}
 
 	private static DailyFinanceEntry commonRow(Long userId, LocalDate businessDate) {

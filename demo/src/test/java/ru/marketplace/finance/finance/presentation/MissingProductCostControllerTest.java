@@ -1,11 +1,14 @@
 package ru.marketplace.finance.finance.presentation;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -72,6 +75,33 @@ class MissingProductCostControllerTest {
 				.andExpect(jsonPath("$[0].rowsCount").value(2))
 				.andExpect(jsonPath("$[0].netQuantity").value(3))
 				.andExpect(jsonPath("$[1]").doesNotExist());
+	}
+
+	@Test
+	void exportsProductsWithMissingCostsAsCsv() throws Exception {
+		User user = userRepository.saveAndFlush(new User(
+				"seller-missing-costs-csv@example.com",
+				"$2a$10$hash",
+				"Seller"));
+		dailyRepository.save(missingCostRow(user.getId(), LocalDate.of(2026, 6, 21), 111111111L, "First product", 1));
+		dailyRepository.flush();
+
+		byte[] response = mockMvc.perform(get("/api/reports/missing-product-costs/export.csv")
+						.with(user("seller"))
+						.param("userId", user.getId().toString())
+						.param("dateFrom", "2026-06-21")
+						.param("dateTo", "2026-06-22"))
+				.andExpect(status().isOk())
+				.andExpect(header().string(
+						"Content-Disposition",
+						"attachment; filename=\"missing-product-costs-2026-06-21-2026-06-22.csv\""))
+				.andReturn()
+				.getResponse()
+				.getContentAsByteArray();
+
+		String csv = new String(response, StandardCharsets.UTF_8);
+		assertThat(csv).startsWith("\uFEFFnm_id;product_name;first_business_date");
+		assertThat(csv).contains("111111111;First product;2026-06-21;2026-06-21;1;1;2026-06-21;");
 	}
 
 	private static DailyFinanceEntry missingCostRow(
