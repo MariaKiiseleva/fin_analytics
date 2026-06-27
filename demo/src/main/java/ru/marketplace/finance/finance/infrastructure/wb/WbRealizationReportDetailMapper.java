@@ -26,7 +26,7 @@ public class WbRealizationReportDetailMapper {
 		return new RawFinancialOperationImportRow(
 				text(row, "rrd_id"),
 				text(row, "srid"),
-				longValue(row, "nm_id"),
+				positiveLongValue(row, "nm_id"),
 				text(row, "supplier_oper_name"),
 				text(row, "doc_type_name"),
 				instant(row, "order_dt"),
@@ -78,6 +78,11 @@ public class WbRealizationReportDetailMapper {
 		catch (NumberFormatException exception) {
 			return null;
 		}
+	}
+
+	private static Long positiveLongValue(JsonNode row, String fieldName) {
+		Long value = longValue(row, fieldName);
+		return value == null || value <= 0 ? null : value;
 	}
 
 	private static Integer integer(JsonNode row, String fieldName) {

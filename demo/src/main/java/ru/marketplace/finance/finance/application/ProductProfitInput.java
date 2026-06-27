@@ -6,6 +6,7 @@ public record ProductProfitInput(
 		BigDecimal netRevenueAmount,
 		BigDecimal commissionAmount,
 		BigDecimal logisticsAmount,
+		BigDecimal acquiringAmount,
 		BigDecimal costAmount,
 		BigDecimal taxAmount) {
 }

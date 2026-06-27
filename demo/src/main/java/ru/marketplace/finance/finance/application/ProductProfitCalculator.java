@@ -14,6 +14,7 @@ public class ProductProfitCalculator {
 		return amount(input.netRevenueAmount())
 				.subtract(amount(input.commissionAmount()))
 				.subtract(amount(input.logisticsAmount()))
+				.subtract(amount(input.acquiringAmount()))
 				.subtract(amount(input.costAmount()))
 				.subtract(amount(input.taxAmount()))
 				.setScale(2, RoundingMode.HALF_UP);

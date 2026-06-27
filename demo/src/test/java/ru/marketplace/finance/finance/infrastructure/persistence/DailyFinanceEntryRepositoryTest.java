@@ -55,6 +55,7 @@ class DailyFinanceEntryRepositoryTest {
 				new BigDecimal("1000.00"),
 				new BigDecimal("250.00"),
 				new BigDecimal("180.00"),
+				new BigDecimal("45.00"),
 				new BigDecimal("900.00"),
 				new BigDecimal("120.00"),
 				new BigDecimal("550.00"),

@@ -106,9 +106,10 @@ class DailyFinanceRecalculationServiceTest {
 		assertThat(productRow.getNetRevenueAmount()).isEqualByComparingTo("600.00");
 		assertThat(productRow.getCommissionAmount()).isEqualByComparingTo("135.00");
 		assertThat(productRow.getLogisticsAmount()).isEqualByComparingTo("90.00");
+		assertThat(productRow.getAcquiringAmount()).isEqualByComparingTo("35.00");
 		assertThat(productRow.getCostAmount()).isEqualByComparingTo("100.00");
 		assertThat(productRow.getTaxAmount()).isEqualByComparingTo("60.00");
-		assertThat(productRow.getProductProfitAmount()).isEqualByComparingTo("215.00");
+		assertThat(productRow.getProductProfitAmount()).isEqualByComparingTo("180.00");
 		assertThat(productRow.getHasCost()).isTrue();
 		DailyFinanceEntry secondProductRow = dailyRepository
 				.findByUserIdAndBusinessDateAndNmId(user.getId(), businessDate, 222222222L)
@@ -116,12 +117,13 @@ class DailyFinanceRecalculationServiceTest {
 		assertThat(secondProductRow.getNetRevenueAmount()).isEqualByComparingTo("500.00");
 		assertThat(secondProductRow.getCommissionAmount()).isEqualByComparingTo("90.00");
 		assertThat(secondProductRow.getLogisticsAmount()).isEqualByComparingTo("0.00");
-		assertThat(secondProductRow.getProductProfitAmount()).isEqualByComparingTo("310.00");
+		assertThat(secondProductRow.getAcquiringAmount()).isEqualByComparingTo("10.00");
+		assertThat(secondProductRow.getProductProfitAmount()).isEqualByComparingTo("300.00");
 
 		DailyFinanceEntry commonRow = dailyRepository
 				.findByUserIdAndBusinessDateAndNmIdIsNull(user.getId(), businessDate)
 				.orElseThrow();
-		assertThat(commonRow.getAcquiringAmount()).isEqualByComparingTo("45.00");
+		assertThat(commonRow.getAcquiringAmount()).isEqualByComparingTo("0.00");
 		assertThat(commonRow.getAdditionalDeductionsAmount()).isEqualByComparingTo("20.00");
 		assertThat(rawRepository.findByUserIdAndBusinessDate(user.getId(), businessDate))
 				.filteredOn(operation -> "Неизвестная операция WB".equals(operation.getSupplierOperationName()))

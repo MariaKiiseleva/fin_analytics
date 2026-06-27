@@ -98,6 +98,7 @@ public class DailyFinanceRecalculationService {
 					product.netRevenue(),
 					product.commission,
 					product.logistics,
+					product.acquiring,
 					costAmount,
 					taxAmount));
 			DailyFinanceEntry productRow = DailyFinanceEntry.productRow(
@@ -113,6 +114,7 @@ public class DailyFinanceRecalculationService {
 					product.returnsAmount,
 					product.commission,
 					product.logistics,
+					product.acquiring,
 					costAmount,
 					taxAmount,
 					profitAmount,
@@ -171,6 +173,7 @@ public class DailyFinanceRecalculationService {
 				operation.getRetailAmount(),
 				operation.getRetailAmountWithDiscount(),
 				operation.getSellerAmount(),
+				operation.getCommissionAmount(),
 				operation.getAcquiringAmount(),
 				operation.getLogisticsAmount(),
 				operation.getRebillLogisticsAmount(),
@@ -223,7 +226,6 @@ public class DailyFinanceRecalculationService {
 				RawFinancialOperation operation,
 				FinancialOperationType operationType,
 				MoneyCalculationResult money) {
-			commonAcquiring = commonAcquiring.add(money.acquiringAmount());
 			commonStorage = commonStorage.add(money.storageAmount());
 			commonAcceptance = commonAcceptance.add(money.acceptanceAmount());
 			commonPenalty = commonPenalty.add(money.penaltyAmount());
@@ -239,6 +241,7 @@ public class DailyFinanceRecalculationService {
 				}
 				return;
 			}
+			commonAcquiring = commonAcquiring.add(money.acquiringAmount());
 			if (money.logisticsAmount().compareTo(ZERO) == 0) {
 				return;
 			}
@@ -360,6 +363,7 @@ public class DailyFinanceRecalculationService {
 		private BigDecimal returnsAmount = ZERO;
 		private BigDecimal commission = ZERO;
 		private BigDecimal logistics = ZERO;
+		private BigDecimal acquiring = ZERO;
 
 		private OrderProductAccumulator(OrderProductKey key) {
 			this.key = key;
@@ -376,6 +380,7 @@ public class DailyFinanceRecalculationService {
 				salesAmount = salesAmount.add(money.salesAmount());
 				returnsAmount = returnsAmount.add(money.returnsAmount());
 				commission = commission.add(money.commissionAmount());
+				acquiring = acquiring.add(money.acquiringAmount());
 			}
 			logistics = logistics.add(money.logisticsAmount());
 		}
@@ -390,6 +395,7 @@ public class DailyFinanceRecalculationService {
 		private BigDecimal returnsAmount = ZERO;
 		private BigDecimal commission = ZERO;
 		private BigDecimal logistics = ZERO;
+		private BigDecimal acquiring = ZERO;
 		private boolean hasCost = true;
 
 		private ProductAccumulator(Long nmId) {
@@ -403,6 +409,7 @@ public class DailyFinanceRecalculationService {
 			returnsAmount = returnsAmount.add(orderProduct.returnsAmount);
 			commission = commission.add(orderProduct.commission);
 			logistics = logistics.add(orderProduct.logistics);
+			acquiring = acquiring.add(orderProduct.acquiring);
 		}
 
 		private int netQuantity() {

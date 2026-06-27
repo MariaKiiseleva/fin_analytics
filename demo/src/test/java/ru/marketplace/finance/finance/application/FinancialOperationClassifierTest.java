@@ -33,9 +33,6 @@ class FinancialOperationClassifierTest {
 		assertThat(classify("Логистика", null)).isEqualTo(FinancialOperationType.LOGISTICS);
 		assertThat(classify("Логистика сторно", null)).isEqualTo(FinancialOperationType.LOGISTICS);
 		assertThat(classify("Коррекция логистики", null)).isEqualTo(FinancialOperationType.LOGISTICS);
-		assertThat(classify("Возмещение издержек по перевозке", null)).isEqualTo(FinancialOperationType.LOGISTICS);
-		assertThat(classify("Возмещение издержек по перевозке/по складским операциям с товаром", null))
-				.isEqualTo(FinancialOperationType.LOGISTICS);
 		assertThat(classify("Возмещение за выдачу и возврат товаров на ПВЗ", null))
 				.isEqualTo(FinancialOperationType.LOGISTICS);
 		assertThat(classify("Хранение", null)).isEqualTo(FinancialOperationType.STORAGE);
@@ -58,6 +55,14 @@ class FinancialOperationClassifierTest {
 	@Test
 	void classifiesDamageCompensationSeparately() {
 		assertThat(classify("Компенсация ущерба", null)).isEqualTo(FinancialOperationType.COMPENSATION);
+	}
+
+	@Test
+	void classifiesWildberriesInternalExpenseCompensationSeparately() {
+		assertThat(classify("Возмещение издержек по перевозке", null))
+				.isEqualTo(FinancialOperationType.WB_INTERNAL_EXPENSE_COMPENSATION);
+		assertThat(classify("Возмещение издержек по перевозке/по складским операциям с товаром", null))
+				.isEqualTo(FinancialOperationType.WB_INTERNAL_EXPENSE_COMPENSATION);
 	}
 
 	@Test

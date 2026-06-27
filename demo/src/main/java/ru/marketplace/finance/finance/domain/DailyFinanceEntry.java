@@ -219,6 +219,7 @@ public class DailyFinanceEntry {
 			BigDecimal returnsAmount,
 			BigDecimal commissionAmount,
 			BigDecimal logisticsAmount,
+			BigDecimal acquiringAmount,
 			BigDecimal costAmount,
 			BigDecimal taxAmount,
 			BigDecimal productProfitAmount,
@@ -232,6 +233,7 @@ public class DailyFinanceEntry {
 		this.netRevenueAmount = this.salesAmount.subtract(this.returnsAmount);
 		this.commissionAmount = amountOrZero(commissionAmount);
 		this.logisticsAmount = amountOrZero(logisticsAmount);
+		this.acquiringAmount = amountOrZero(acquiringAmount);
 		this.costAmount = amountOrZero(costAmount);
 		this.taxAmount = amountOrZero(taxAmount);
 		this.productProfitAmount = amountOrZero(productProfitAmount);

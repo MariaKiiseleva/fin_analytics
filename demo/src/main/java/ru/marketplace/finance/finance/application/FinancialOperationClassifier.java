@@ -35,12 +35,19 @@ public class FinancialOperationClassifier {
 	private static final Set<String> COMPENSATION_NAMES = Set.of(
 			"компенсация ущерба");
 
+	private static final Set<String> WB_INTERNAL_EXPENSE_COMPENSATION_NAMES = Set.of(
+			"возмещение издержек по перевозке",
+			"возмещение издержек по перевозке/по складским операциям с товаром");
+
 	public FinancialOperationType classify(FinancialOperationClassificationInput input) {
 		String operation = normalize(input.supplierOperationName());
 		String document = normalize(input.documentType());
 
 		if (COMPENSATION_NAMES.contains(operation)) {
 			return FinancialOperationType.COMPENSATION;
+		}
+		if (WB_INTERNAL_EXPENSE_COMPENSATION_NAMES.contains(operation)) {
+			return FinancialOperationType.WB_INTERNAL_EXPENSE_COMPENSATION;
 		}
 		if (RETURN_NAMES.contains(operation) || document.contains("возврат")) {
 			return FinancialOperationType.RETURN;

@@ -179,6 +179,10 @@ public class RawFinancialOperation {
 		return sellerAmount;
 	}
 
+	public BigDecimal getCommissionAmount() {
+		return commissionAmount;
+	}
+
 	public BigDecimal getLogisticsAmount() {
 		return logisticsAmount;
 	}

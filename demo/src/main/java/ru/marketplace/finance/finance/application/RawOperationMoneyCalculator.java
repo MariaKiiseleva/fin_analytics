@@ -12,6 +12,9 @@ public class RawOperationMoneyCalculator {
 		FinancialOperationType operationType = Objects.requireNonNull(
 				input.operationType(),
 				"operationType must not be null");
+		if (operationType == FinancialOperationType.WB_INTERNAL_EXPENSE_COMPENSATION) {
+			return zeroResult();
+		}
 		BigDecimal revenue = resolveRevenue(input);
 		BigDecimal commission = calculateCommission(input, operationType);
 		BigDecimal logistics = calculateLogistics(input, operationType);
@@ -28,6 +31,10 @@ public class RawOperationMoneyCalculator {
 				abs(input.acceptanceAmount()),
 				abs(input.penaltyAmount()),
 				abs(input.deductionAmount()));
+	}
+
+	private static MoneyCalculationResult zeroResult() {
+		return new MoneyCalculationResult(0, 0, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO, ZERO);
 	}
 
 	private static int salesQuantity(MoneyCalculationInput input, FinancialOperationType operationType) {
@@ -61,6 +68,10 @@ public class RawOperationMoneyCalculator {
 			FinancialOperationType operationType) {
 		if (operationType != FinancialOperationType.SALE && operationType != FinancialOperationType.RETURN) {
 			return ZERO;
+		}
+		if (input.commissionAmount() != null) {
+			BigDecimal commission = abs(input.commissionAmount());
+			return operationType == FinancialOperationType.RETURN ? commission.negate() : commission;
 		}
 		BigDecimal retail = resolveRevenue(input);
 		BigDecimal sellerAmount = input.sellerAmount();

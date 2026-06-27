@@ -95,7 +95,7 @@ class DailyFinanceReportControllerTest {
 				.andExpect(jsonPath("$[1].netRevenueAmount").value(1000.00))
 				.andExpect(jsonPath("$[1].commissionAmount").value(180.00))
 				.andExpect(jsonPath("$[1].costAmount").value(100.00))
-				.andExpect(jsonPath("$[1].productProfitAmount").value(720.00));
+				.andExpect(jsonPath("$[1].productProfitAmount").value(700.00));
 	}
 
 	private static RawFinancialOperation sale(Long userId, Long syncJobId, LocalDate businessDate) {

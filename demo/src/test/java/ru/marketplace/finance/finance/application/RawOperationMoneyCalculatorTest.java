@@ -17,6 +17,7 @@ class RawOperationMoneyCalculatorTest {
 				"1000.00",
 				null,
 				"750.00",
+				null,
 				"25.00",
 				null,
 				null,
@@ -43,6 +44,7 @@ class RawOperationMoneyCalculatorTest {
 				"1000.00",
 				null,
 				"750.00",
+				null,
 				"25.00",
 				null,
 				null,
@@ -68,6 +70,7 @@ class RawOperationMoneyCalculatorTest {
 				null,
 				"900.00",
 				"700.00",
+				null,
 				"20.00",
 				null,
 				null,
@@ -83,9 +86,33 @@ class RawOperationMoneyCalculatorTest {
 	}
 
 	@Test
+	void prefersExplicitWildberriesCommissionWhenPresent() {
+		MoneyCalculationResult result = calculator.calculate(input(
+				FinancialOperationType.SALE,
+				1,
+				"1000.00",
+				null,
+				"750.00",
+				"111.00",
+				"25.00",
+				null,
+				null,
+				null,
+				false,
+				null,
+				null,
+				null,
+				null));
+
+		assertThat(result.commissionAmount()).isEqualByComparingTo("111.00");
+		assertThat(result.acquiringAmount()).isEqualByComparingTo("25.00");
+	}
+
+	@Test
 	void calculatesLogisticsOnlyForLogisticsOperation() {
 		MoneyCalculationResult result = calculator.calculate(input(
 				FinancialOperationType.LOGISTICS,
+				null,
 				null,
 				null,
 				null,
@@ -114,6 +141,7 @@ class RawOperationMoneyCalculatorTest {
 				null,
 				null,
 				null,
+				null,
 				"120.00",
 				"30.00",
 				"15.00",
@@ -130,6 +158,7 @@ class RawOperationMoneyCalculatorTest {
 	void accumulatesCommonExpensesAsAbsoluteAmounts() {
 		MoneyCalculationResult result = calculator.calculate(input(
 				FinancialOperationType.DEDUCTION,
+				null,
 				null,
 				null,
 				null,
@@ -151,12 +180,45 @@ class RawOperationMoneyCalculatorTest {
 		assertThat(result.deductionAmount()).isEqualByComparingTo("50.00");
 	}
 
+	@Test
+	void ignoresWildberriesInternalExpenseCompensationInSellerProfitCalculation() {
+		MoneyCalculationResult result = calculator.calculate(input(
+				FinancialOperationType.WB_INTERNAL_EXPENSE_COMPENSATION,
+				null,
+				null,
+				null,
+				null,
+				null,
+				"-100.00",
+				"120.00",
+				"30.00",
+				null,
+				false,
+				"40.00",
+				"50.00",
+				"60.00",
+				"70.00"));
+
+		assertThat(result.salesQuantity()).isZero();
+		assertThat(result.returnQuantity()).isZero();
+		assertThat(result.salesAmount()).isEqualByComparingTo("0");
+		assertThat(result.returnsAmount()).isEqualByComparingTo("0");
+		assertThat(result.commissionAmount()).isEqualByComparingTo("0");
+		assertThat(result.logisticsAmount()).isEqualByComparingTo("0");
+		assertThat(result.acquiringAmount()).isEqualByComparingTo("0");
+		assertThat(result.storageAmount()).isEqualByComparingTo("0");
+		assertThat(result.acceptanceAmount()).isEqualByComparingTo("0");
+		assertThat(result.penaltyAmount()).isEqualByComparingTo("0");
+		assertThat(result.deductionAmount()).isEqualByComparingTo("0");
+	}
+
 	private static MoneyCalculationInput input(
 			FinancialOperationType operationType,
 			Integer quantity,
 			String retailAmount,
 			String retailAmountWithDiscount,
 			String sellerAmount,
+			String commissionAmount,
 			String acquiringAmount,
 			String logisticsAmount,
 			String rebillLogisticsAmount,
@@ -172,6 +234,7 @@ class RawOperationMoneyCalculatorTest {
 				amount(retailAmount),
 				amount(retailAmountWithDiscount),
 				amount(sellerAmount),
+				amount(commissionAmount),
 				amount(acquiringAmount),
 				amount(logisticsAmount),
 				amount(rebillLogisticsAmount),

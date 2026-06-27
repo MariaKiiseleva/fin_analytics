@@ -8,6 +8,7 @@ public record MoneyCalculationInput(
 		BigDecimal retailAmount,
 		BigDecimal retailAmountWithDiscount,
 		BigDecimal sellerAmount,
+		BigDecimal commissionAmount,
 		BigDecimal acquiringAmount,
 		BigDecimal logisticsAmount,
 		BigDecimal rebillLogisticsAmount,
