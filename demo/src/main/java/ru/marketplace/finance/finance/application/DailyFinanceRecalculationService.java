@@ -71,6 +71,7 @@ public class DailyFinanceRecalculationService {
 		}
 
 		dailyRepository.deleteByUserIdAndBusinessDateBetween(userId, dateFrom, dateTo);
+		dailyRepository.flush();
 		int savedRows = 0;
 		for (DayAccumulator day : days.values()) {
 			savedRows += saveDay(user, day);

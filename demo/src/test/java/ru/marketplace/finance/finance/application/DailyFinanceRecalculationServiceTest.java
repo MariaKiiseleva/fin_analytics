@@ -134,6 +134,14 @@ class DailyFinanceRecalculationServiceTest {
 				.filteredOn(operation -> "Продажа".equals(operation.getSupplierOperationName()))
 				.allSatisfy(operation -> assertThat(operation.getClassificationStatus())
 						.isEqualTo(ClassificationStatus.RECOGNIZED));
+
+		DailyFinanceRecalculationResult repeatedResult = recalculationService.recalculate(
+				user.getId(),
+				businessDate,
+				businessDate);
+
+		assertThat(repeatedResult.savedDailyRows()).isEqualTo(3);
+		assertThat(dailyRepository.findByUserIdAndBusinessDate(user.getId(), businessDate)).hasSize(3);
 	}
 
 	private static RawFinancialOperation sale(Long userId, Long syncJobId, LocalDate businessDate) {
