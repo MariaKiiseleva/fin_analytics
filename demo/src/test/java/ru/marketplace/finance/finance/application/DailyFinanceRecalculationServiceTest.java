@@ -100,6 +100,7 @@ class DailyFinanceRecalculationServiceTest {
 		DailyFinanceEntry productRow = dailyRepository
 				.findByUserIdAndBusinessDateAndNmId(user.getId(), businessDate, 123456789L)
 				.orElseThrow();
+		assertThat(productRow.getProductName()).isEqualTo("Test Brand / Test Subject / 123");
 		assertThat(productRow.getSalesQuantity()).isEqualTo(2);
 		assertThat(productRow.getReturnQuantity()).isEqualTo(1);
 		assertThat(productRow.getNetQuantity()).isEqualTo(1);
@@ -114,6 +115,7 @@ class DailyFinanceRecalculationServiceTest {
 		DailyFinanceEntry secondProductRow = dailyRepository
 				.findByUserIdAndBusinessDateAndNmId(user.getId(), businessDate, 222222222L)
 				.orElseThrow();
+		assertThat(secondProductRow.getProductName()).isEqualTo("Second Brand / Second Subject / 222");
 		assertThat(secondProductRow.getNetRevenueAmount()).isEqualByComparingTo("500.00");
 		assertThat(secondProductRow.getCommissionAmount()).isEqualByComparingTo("90.00");
 		assertThat(secondProductRow.getLogisticsAmount()).isEqualByComparingTo("0.00");
@@ -279,7 +281,31 @@ class DailyFinanceRecalculationServiceTest {
 				syncJobId,
 				"00000000000000000000000000000000000000000000000000000000" + hashSuffix(suffix),
 				businessDate,
-				"{\"test\":\"" + suffix + "\"}");
+				rawPayload(suffix));
+	}
+
+	private static String rawPayload(String suffix) {
+		return switch (suffix) {
+			case "sale", "return" -> """
+					{
+					  "test": "%s",
+					  "brand_name": "Test Brand",
+					  "subject_name": "Test Subject",
+					  "sa_name": "123",
+					  "ts_name": "0"
+					}
+					""".formatted(suffix);
+			case "second-sale" -> """
+					{
+					  "test": "%s",
+					  "brand_name": "Second Brand",
+					  "subject_name": "Second Subject",
+					  "sa_name": "222",
+					  "ts_name": "0"
+					}
+					""".formatted(suffix);
+			default -> "{\"test\":\"" + suffix + "\"}";
+		};
 	}
 
 	private static String hashSuffix(String value) {

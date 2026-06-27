@@ -1,8 +1,12 @@
 package ru.marketplace.finance.finance.application;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +33,7 @@ public class DailyFinanceRecalculationService {
 	private final ProductCostRepository productCostRepository;
 	private final RawFinancialOperationRepository rawRepository;
 	private final DailyFinanceEntryRepository dailyRepository;
+	private final ObjectMapper objectMapper;
 	private final FinancialOperationClassifier operationClassifier = new FinancialOperationClassifier();
 	private final RawOperationMoneyCalculator moneyCalculator = new RawOperationMoneyCalculator();
 	private final ProductProfitCalculator profitCalculator = new ProductProfitCalculator();
@@ -37,11 +42,13 @@ public class DailyFinanceRecalculationService {
 			UserRepository userRepository,
 			ProductCostRepository productCostRepository,
 			RawFinancialOperationRepository rawRepository,
-			DailyFinanceEntryRepository dailyRepository) {
+			DailyFinanceEntryRepository dailyRepository,
+			ObjectMapper objectMapper) {
 		this.userRepository = userRepository;
 		this.productCostRepository = productCostRepository;
 		this.rawRepository = rawRepository;
 		this.dailyRepository = dailyRepository;
+		this.objectMapper = objectMapper;
 	}
 
 	@Transactional
@@ -106,7 +113,7 @@ public class DailyFinanceRecalculationService {
 					user.getId(),
 					day.businessDate,
 					product.nmId,
-					null,
+					product.productName,
 					CALCULATION_VERSION);
 			productRow.replaceProductTotals(
 					product.salesQuantity,
@@ -144,7 +151,7 @@ public class DailyFinanceRecalculationService {
 				});
 	}
 
-	private static Map<LocalDate, DayAccumulator> createDays(LocalDate dateFrom, LocalDate dateTo) {
+	private Map<LocalDate, DayAccumulator> createDays(LocalDate dateFrom, LocalDate dateTo) {
 		Map<LocalDate, DayAccumulator> days = new LinkedHashMap<>();
 		LocalDate current = dateFrom;
 		while (!current.isAfter(dateTo)) {
@@ -206,7 +213,7 @@ public class DailyFinanceRecalculationService {
 		return value.setScale(2, RoundingMode.HALF_UP);
 	}
 
-	private static final class DayAccumulator {
+	private final class DayAccumulator {
 
 		private final LocalDate businessDate;
 		private final Map<OrderProductKey, OrderProductAccumulator> orderProducts = new LinkedHashMap<>();
@@ -235,7 +242,7 @@ public class DailyFinanceRecalculationService {
 			if (hasProduct(operation)) {
 				OrderProductKey orderProductKey = OrderProductKey.from(operation);
 				orderProducts.computeIfAbsent(orderProductKey, OrderProductAccumulator::new)
-						.add(operationType, money);
+						.add(operationType, money, extractProductName(operation));
 				if (hasOrder(operation)) {
 					orderLogistics.computeIfAbsent(operation.getSrid(), OrderLogisticsAccumulator::new)
 							.addProduct(orderProductKey);
@@ -329,6 +336,33 @@ public class DailyFinanceRecalculationService {
 		}
 	}
 
+	private String extractProductName(RawFinancialOperation operation) {
+		try {
+			JsonNode payload = objectMapper.readTree(operation.getRawPayload());
+			List<String> parts = new ArrayList<>();
+			addTextPart(parts, payload, "brand_name");
+			addTextPart(parts, payload, "subject_name");
+			addTextPart(parts, payload, "sa_name");
+			addTextPart(parts, payload, "ts_name");
+			return parts.isEmpty() ? null : String.join(" / ", parts);
+		}
+		catch (JsonProcessingException exception) {
+			return null;
+		}
+	}
+
+	private static void addTextPart(List<String> parts, JsonNode payload, String fieldName) {
+		JsonNode value = payload.get(fieldName);
+		if (value == null || value.isNull()) {
+			return;
+		}
+		String text = value.asText().trim();
+		if (text.isEmpty() || "0".equals(text) || parts.contains(text)) {
+			return;
+		}
+		parts.add(text);
+	}
+
 	private static final class OrderLogisticsAccumulator {
 
 		private final String srid;
@@ -358,6 +392,7 @@ public class DailyFinanceRecalculationService {
 	private static final class OrderProductAccumulator {
 
 		private final OrderProductKey key;
+		private String productName;
 		private int salesQuantity;
 		private int returnQuantity;
 		private BigDecimal salesAmount = ZERO;
@@ -374,7 +409,10 @@ public class DailyFinanceRecalculationService {
 			return key.nmId();
 		}
 
-		private void add(FinancialOperationType operationType, MoneyCalculationResult money) {
+		private void add(FinancialOperationType operationType, MoneyCalculationResult money, String productName) {
+			if (this.productName == null && productName != null && !productName.isBlank()) {
+				this.productName = productName;
+			}
 			if (operationType == FinancialOperationType.SALE || operationType == FinancialOperationType.RETURN) {
 				salesQuantity += money.salesQuantity();
 				returnQuantity += money.returnQuantity();
@@ -390,6 +428,7 @@ public class DailyFinanceRecalculationService {
 	private static final class ProductAccumulator {
 
 		private final Long nmId;
+		private String productName;
 		private int salesQuantity;
 		private int returnQuantity;
 		private BigDecimal salesAmount = ZERO;
@@ -404,6 +443,9 @@ public class DailyFinanceRecalculationService {
 		}
 
 		private void add(OrderProductAccumulator orderProduct) {
+			if (productName == null && orderProduct.productName != null && !orderProduct.productName.isBlank()) {
+				productName = orderProduct.productName;
+			}
 			salesQuantity += orderProduct.salesQuantity;
 			returnQuantity += orderProduct.returnQuantity;
 			salesAmount = salesAmount.add(orderProduct.salesAmount);
