@@ -1,13 +1,16 @@
 package ru.marketplace.finance.cost.presentation;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -181,6 +184,29 @@ class ProductCostControllerTest {
 				.andExpect(jsonPath("$.savedCosts[0].nmId").value(164230893))
 				.andExpect(jsonPath("$.savedCosts[0].costAmount").value(300.50))
 				.andExpect(jsonPath("$.savedCosts[1].productName").value("Second product"));
+	}
+
+	@Test
+	void exportsProductCostsTemplate() throws Exception {
+		byte[] response = mockMvc.perform(get("/api/product-costs/template.xlsx")
+						.with(user("seller")))
+				.andExpect(status().isOk())
+				.andExpect(header().string(
+						"Content-Disposition",
+						"attachment; filename=\"product-costs-template.xlsx\""))
+				.andReturn()
+				.getResponse()
+				.getContentAsByteArray();
+
+		try (Workbook workbook = new XSSFWorkbook(new ByteArrayInputStream(response))) {
+			Sheet sheet = workbook.getSheet("Product costs");
+			Row header = sheet.getRow(0);
+			assertThat(header.getCell(0).getStringCellValue()).isEqualTo("nm_id");
+			assertThat(header.getCell(1).getStringCellValue()).isEqualTo("product_name");
+			assertThat(header.getCell(2).getStringCellValue()).isEqualTo("cost_price");
+			assertThat(header.getCell(3).getStringCellValue()).isEqualTo("effective_from");
+			assertThat(sheet.getRow(1).getCell(0).getNumericCellValue()).isEqualTo(125167917D);
+		}
 	}
 
 	private static byte[] productCostsWorkbook() throws IOException {

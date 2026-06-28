@@ -4,7 +4,11 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import java.io.IOException;
 import java.util.List;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -19,6 +23,7 @@ import ru.marketplace.finance.cost.application.ProductCostCsvImportService;
 import ru.marketplace.finance.cost.application.ProductCostExcelImportService;
 import ru.marketplace.finance.cost.application.ProductCostImportResult;
 import ru.marketplace.finance.cost.application.ProductCostService;
+import ru.marketplace.finance.cost.application.ProductCostTemplateExportService;
 import ru.marketplace.finance.cost.application.ProductCostView;
 
 @RestController
@@ -29,14 +34,17 @@ public class ProductCostController {
 	private final ProductCostService productCostService;
 	private final ProductCostCsvImportService csvImportService;
 	private final ProductCostExcelImportService excelImportService;
+	private final ProductCostTemplateExportService templateExportService;
 
 	public ProductCostController(
 			ProductCostService productCostService,
 			ProductCostCsvImportService csvImportService,
-			ProductCostExcelImportService excelImportService) {
+			ProductCostExcelImportService excelImportService,
+			ProductCostTemplateExportService templateExportService) {
 		this.productCostService = productCostService;
 		this.csvImportService = csvImportService;
 		this.excelImportService = excelImportService;
+		this.templateExportService = templateExportService;
 	}
 
 	@PostMapping
@@ -74,6 +82,19 @@ public class ProductCostController {
 			@RequestParam @Positive Long userId,
 			@RequestPart("file") MultipartFile file) throws IOException {
 		return excelImportService.importProductCosts(userId, file.getInputStream());
+	}
+
+	@GetMapping(value = "/template.xlsx", produces = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	public ResponseEntity<byte[]> exportProductCostsTemplate() {
+		byte[] content = templateExportService.exportTemplate();
+		return ResponseEntity.ok()
+				.header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
+						.filename("product-costs-template.xlsx")
+						.build()
+						.toString())
+				.contentType(MediaType.parseMediaType(
+						"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+				.body(content);
 	}
 
 	@GetMapping
