@@ -54,7 +54,7 @@ class DatabaseMigrationIntegrationTest {
 				"uq_daily_common",
 				"idx_daily_report_period");
 
-		assertThat(appliedMigrationCount()).isEqualTo(6);
+		assertThat(appliedMigrationCount()).isEqualTo(7);
 	}
 
 	private List<String> tableNames() {

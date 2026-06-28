@@ -134,9 +134,13 @@ class DailyFinanceExportControllerTest {
 			assertThat(sheet.getRow(4).getCell(0).getStringCellValue()).isEqualTo("Test Product");
 			assertThat(sheet.getRow(4).getCell(1).getNumericCellValue()).isEqualTo(123456789D);
 			assertThat(sheet.getRow(4).getCell(2).getNumericCellValue()).isEqualTo(250D);
-			assertThat(sheet.getRow(4).getCell(10).getNumericCellValue()).isEqualTo(550D);
+			assertThat(sheet.getRow(4).getCell(7).getNumericCellValue()).isEqualTo(20D);
+			assertThat(sheet.getRow(4).getCell(14).getNumericCellValue()).isEqualTo(550D);
 			assertThat(sheet.getRow(5).getCell(0).getStringCellValue()).isEqualTo("Общие удержания");
-			assertThat(sheet.getRow(5).getCell(7).getNumericCellValue()).isEqualTo(250D);
+			assertThat(sheet.getRow(5).getCell(8).getNumericCellValue()).isEqualTo(50D);
+			assertThat(sheet.getRow(5).getCell(11).getNumericCellValue()).isEqualTo(200D);
+			assertThat(sheet.getRow(5).getCell(14).getNumericCellValue()).isEqualTo(-250D);
+			assertThat(sheet.getRow(6).getCell(14).getNumericCellValue()).isEqualTo(300D);
 		}
 	}
 

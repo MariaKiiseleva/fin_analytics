@@ -28,6 +28,21 @@ public interface DailyFinanceEntryRepository extends JpaRepository<DailyFinanceE
 
 	@Query("""
 			select
+				entry.businessDate as businessDate,
+				count(entry.id) as rowsCount
+			from DailyFinanceEntry entry
+			where entry.userId = :userId
+				and entry.businessDate between :dateFrom and :dateTo
+			group by entry.businessDate
+			order by entry.businessDate
+			""")
+	List<CoverageRowsByDate> countRowsByBusinessDate(
+			@Param("userId") Long userId,
+			@Param("dateFrom") LocalDate dateFrom,
+			@Param("dateTo") LocalDate dateTo);
+
+	@Query("""
+			select
 				entry.nmId as nmId,
 				max(entry.productName) as productName,
 				min(entry.businessDate) as firstBusinessDate,

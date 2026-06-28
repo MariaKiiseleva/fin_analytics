@@ -65,10 +65,10 @@ public class DailyFinanceXlsxExportService {
 			writeHeaders(sheet, styles);
 			writeRows(sheet, styles, rows);
 			writeTotals(sheet, styles, rows);
-			for (int column = 0; column < 14; column++) {
+			for (int column = 0; column < 18; column++) {
 				sheet.autoSizeColumn(column);
 			}
-			sheet.setAutoFilter(org.apache.poi.ss.util.CellRangeAddress.valueOf("A4:N4"));
+			sheet.setAutoFilter(org.apache.poi.ss.util.CellRangeAddress.valueOf("A4:R4"));
 			sheet.createFreezePane(0, 4);
 			workbook.write(output);
 			return output.toByteArray();
@@ -155,12 +155,12 @@ public class DailyFinanceXlsxExportService {
 		Row title = sheet.createRow(0);
 		title.createCell(0).setCellValue("Финансовая аналитика - расширенный отчет");
 		title.getCell(0).setCellStyle(styles.title);
-		sheet.addMergedRegion(org.apache.poi.ss.util.CellRangeAddress.valueOf("A1:N1"));
+		sheet.addMergedRegion(org.apache.poi.ss.util.CellRangeAddress.valueOf("A1:R1"));
 
 		Row period = sheet.createRow(1);
 		period.createCell(0).setCellValue("Период: " + dateFrom + " - " + dateTo);
 		period.getCell(0).setCellStyle(styles.subtitle);
-		sheet.addMergedRegion(org.apache.poi.ss.util.CellRangeAddress.valueOf("A2:N2"));
+		sheet.addMergedRegion(org.apache.poi.ss.util.CellRangeAddress.valueOf("A2:R2"));
 	}
 
 	private static void writeHeaders(Sheet sheet, Styles styles) {
@@ -173,7 +173,11 @@ public class DailyFinanceXlsxExportService {
 				"Выручка",
 				"Возвраты",
 				"Логистика",
-				"Прочее",
+				"Эквайринг",
+				"Хранение",
+				"Приемка",
+				"Штрафы",
+				"Доп. удержания",
 				"Комиссия",
 				"Налог",
 				"Прибыль",
@@ -198,13 +202,17 @@ public class DailyFinanceXlsxExportService {
 			writeMoney(row, 4, reportRow.sales(), styles.money);
 			writeMoney(row, 5, reportRow.returnsAmount(), styles.money);
 			writeMoney(row, 6, reportRow.logistics(), styles.money);
-			writeMoney(row, 7, reportRow.other(), styles.money);
-			writeMoney(row, 8, reportRow.commission(), styles.money);
-			writeMoney(row, 9, reportRow.tax(), styles.money);
-			writeMoney(row, 10, reportRow.profit(), styles.profit(reportRow.profit()));
-			writeMoney(row, 11, reportRow.marginPercent(), styles.percent);
-			writeMoney(row, 12, reportRow.buyoutPercent(), styles.percent);
-			writeText(row, 13, reportRow.abc(), styles.text);
+			writeMoney(row, 7, reportRow.acquiring(), styles.money);
+			writeMoney(row, 8, reportRow.storage(), styles.money);
+			writeMoney(row, 9, reportRow.acceptance(), styles.money);
+			writeMoney(row, 10, reportRow.penalty(), styles.money);
+			writeMoney(row, 11, reportRow.additionalDeductions(), styles.money);
+			writeMoney(row, 12, reportRow.commission(), styles.money);
+			writeMoney(row, 13, reportRow.tax(), styles.money);
+			writeMoney(row, 14, reportRow.profit(), styles.profit(reportRow.profit()));
+			writeMoney(row, 15, reportRow.marginPercent(), styles.percent);
+			writeMoney(row, 16, reportRow.buyoutPercent(), styles.percent);
+			writeText(row, 17, reportRow.abc(), styles.text);
 		}
 	}
 
@@ -216,10 +224,14 @@ public class DailyFinanceXlsxExportService {
 		writeMoney(total, 4, sum(rows, ReportRow::sales), styles.totalMoney);
 		writeMoney(total, 5, sum(rows, ReportRow::returnsAmount), styles.totalMoney);
 		writeMoney(total, 6, sum(rows, ReportRow::logistics), styles.totalMoney);
-		writeMoney(total, 7, sum(rows, ReportRow::other), styles.totalMoney);
-		writeMoney(total, 8, sum(rows, ReportRow::commission), styles.totalMoney);
-		writeMoney(total, 9, sum(rows, ReportRow::tax), styles.totalMoney);
-		writeMoney(total, 10, sum(rows, ReportRow::profit), styles.totalMoney);
+		writeMoney(total, 7, sum(rows, ReportRow::acquiring), styles.totalMoney);
+		writeMoney(total, 8, sum(rows, ReportRow::storage), styles.totalMoney);
+		writeMoney(total, 9, sum(rows, ReportRow::acceptance), styles.totalMoney);
+		writeMoney(total, 10, sum(rows, ReportRow::penalty), styles.totalMoney);
+		writeMoney(total, 11, sum(rows, ReportRow::additionalDeductions), styles.totalMoney);
+		writeMoney(total, 12, sum(rows, ReportRow::commission), styles.totalMoney);
+		writeMoney(total, 13, sum(rows, ReportRow::tax), styles.totalMoney);
+		writeMoney(total, 14, sum(rows, ReportRow::profit), styles.totalMoney);
 	}
 
 	private static BigDecimal sum(List<ReportRow> rows, MoneyGetter getter) {
@@ -266,7 +278,11 @@ public class DailyFinanceXlsxExportService {
 			BigDecimal sales,
 			BigDecimal returnsAmount,
 			BigDecimal logistics,
-			BigDecimal other,
+			BigDecimal acquiring,
+			BigDecimal storage,
+			BigDecimal acceptance,
+			BigDecimal penalty,
+			BigDecimal additionalDeductions,
 			BigDecimal commission,
 			BigDecimal tax,
 			BigDecimal profit,
@@ -283,7 +299,11 @@ public class DailyFinanceXlsxExportService {
 					sales,
 					returnsAmount,
 					logistics,
-					other,
+					acquiring,
+					storage,
+					acceptance,
+					penalty,
+					additionalDeductions,
 					commission,
 					tax,
 					profit,
@@ -296,7 +316,11 @@ public class DailyFinanceXlsxExportService {
 			return sales.signum() != 0
 					|| returnsAmount.signum() != 0
 					|| logistics.signum() != 0
-					|| other.signum() != 0
+					|| acquiring.signum() != 0
+					|| storage.signum() != 0
+					|| acceptance.signum() != 0
+					|| penalty.signum() != 0
+					|| additionalDeductions.signum() != 0
 					|| commission.signum() != 0
 					|| tax.signum() != 0
 					|| profit.signum() != 0;
@@ -312,7 +336,11 @@ public class DailyFinanceXlsxExportService {
 		private BigDecimal sales = BigDecimal.ZERO;
 		private BigDecimal returnsAmount = BigDecimal.ZERO;
 		private BigDecimal logistics = BigDecimal.ZERO;
-		private BigDecimal other = BigDecimal.ZERO;
+		private BigDecimal acquiring = BigDecimal.ZERO;
+		private BigDecimal storage = BigDecimal.ZERO;
+		private BigDecimal acceptance = BigDecimal.ZERO;
+		private BigDecimal penalty = BigDecimal.ZERO;
+		private BigDecimal additionalDeductions = BigDecimal.ZERO;
 		private BigDecimal commission = BigDecimal.ZERO;
 		private BigDecimal tax = BigDecimal.ZERO;
 		private BigDecimal cost = BigDecimal.ZERO;
@@ -332,12 +360,11 @@ public class DailyFinanceXlsxExportService {
 			sales = sales.add(entry.getSalesAmount());
 			returnsAmount = returnsAmount.add(entry.getReturnsAmount());
 			logistics = logistics.add(entry.getLogisticsAmount());
-			other = other
-					.add(entry.getAcquiringAmount())
-					.add(entry.getStorageAmount())
-					.add(entry.getAcceptanceAmount())
-					.add(entry.getPenaltyAmount())
-					.add(entry.getAdditionalDeductionsAmount());
+			acquiring = acquiring.add(entry.getAcquiringAmount());
+			storage = storage.add(entry.getStorageAmount());
+			acceptance = acceptance.add(entry.getAcceptanceAmount());
+			penalty = penalty.add(entry.getPenaltyAmount());
+			additionalDeductions = additionalDeductions.add(entry.getAdditionalDeductionsAmount());
 			commission = commission.add(entry.getCommissionAmount());
 			tax = tax.add(taxAmount);
 			cost = cost.add(actualCost);
@@ -345,6 +372,10 @@ public class DailyFinanceXlsxExportService {
 					.subtract(entry.getCommissionAmount())
 					.subtract(entry.getLogisticsAmount())
 					.subtract(entry.getAcquiringAmount())
+					.subtract(entry.getStorageAmount())
+					.subtract(entry.getAcceptanceAmount())
+					.subtract(entry.getPenaltyAmount())
+					.subtract(entry.getAdditionalDeductionsAmount())
 					.subtract(actualCost)
 					.subtract(taxAmount));
 		}
@@ -371,7 +402,11 @@ public class DailyFinanceXlsxExportService {
 					sales,
 					returnsAmount,
 					logistics,
-					other,
+					acquiring,
+					storage,
+					acceptance,
+					penalty,
+					additionalDeductions,
 					commission,
 					tax,
 					profit,
