@@ -22,6 +22,8 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import ru.marketplace.finance.account.domain.User;
 import ru.marketplace.finance.account.infrastructure.UserRepository;
+import ru.marketplace.finance.cost.domain.ProductCost;
+import ru.marketplace.finance.cost.infrastructure.ProductCostRepository;
 import ru.marketplace.finance.finance.domain.DailyFinanceEntry;
 import ru.marketplace.finance.finance.infrastructure.persistence.DailyFinanceEntryRepository;
 
@@ -51,6 +53,9 @@ class MissingProductCostControllerTest {
 	@Autowired
 	DailyFinanceEntryRepository dailyRepository;
 
+	@Autowired
+	ProductCostRepository productCostRepository;
+
 	@Test
 	void returnsProductsWithMissingCosts() throws Exception {
 		User user = userRepository.saveAndFlush(new User(
@@ -59,8 +64,15 @@ class MissingProductCostControllerTest {
 				"Seller"));
 		dailyRepository.save(missingCostRow(user.getId(), LocalDate.of(2026, 6, 21), 111111111L, "First product", 1));
 		dailyRepository.save(missingCostRow(user.getId(), LocalDate.of(2026, 6, 22), 111111111L, "First product", 2));
-		dailyRepository.save(hasCostRow(user.getId(), LocalDate.of(2026, 6, 21), 222222222L));
+		dailyRepository.save(productRow(user.getId(), LocalDate.of(2026, 6, 21), 222222222L, "Second product", 1));
+		productCostRepository.save(new ProductCost(
+				user.getId(),
+				222222222L,
+				"Second product",
+				LocalDate.of(2026, 6, 1),
+				new BigDecimal("100.00")));
 		dailyRepository.flush();
+		productCostRepository.flush();
 
 		mockMvc.perform(get("/api/reports/missing-product-costs")
 						.with(user("seller"))
@@ -118,28 +130,25 @@ class MissingProductCostControllerTest {
 				BigDecimal.ZERO,
 				BigDecimal.ZERO,
 				BigDecimal.ZERO,
-				BigDecimal.ZERO,
-				BigDecimal.ZERO,
-				BigDecimal.ZERO,
-				new BigDecimal("1000.00"),
-				false);
+				BigDecimal.ZERO);
 		return entry;
 	}
 
-	private static DailyFinanceEntry hasCostRow(Long userId, LocalDate businessDate, Long nmId) {
-		DailyFinanceEntry entry = DailyFinanceEntry.productRow(userId, businessDate, nmId, "Second product", 1);
+	private static DailyFinanceEntry productRow(
+			Long userId,
+			LocalDate businessDate,
+			Long nmId,
+			String productName,
+			int netQuantity) {
+		DailyFinanceEntry entry = DailyFinanceEntry.productRow(userId, businessDate, nmId, productName, 1);
 		entry.replaceProductTotals(
-				1,
+				netQuantity,
 				0,
 				new BigDecimal("1000.00"),
 				BigDecimal.ZERO,
 				BigDecimal.ZERO,
 				BigDecimal.ZERO,
-				BigDecimal.ZERO,
-				new BigDecimal("100.00"),
-				BigDecimal.ZERO,
-				new BigDecimal("900.00"),
-				true);
+				BigDecimal.ZERO);
 		return entry;
 	}
 }

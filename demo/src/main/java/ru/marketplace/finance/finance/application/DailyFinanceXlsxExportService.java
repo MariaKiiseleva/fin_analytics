@@ -23,6 +23,9 @@ import org.apache.poi.ss.usermodel.VerticalAlignment;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
+import ru.marketplace.finance.account.domain.User;
+import ru.marketplace.finance.account.infrastructure.UserRepository;
+import ru.marketplace.finance.cost.infrastructure.ProductCostRepository;
 import ru.marketplace.finance.finance.domain.DailyFinanceEntry;
 import ru.marketplace.finance.finance.infrastructure.persistence.DailyFinanceEntryRepository;
 
@@ -32,9 +35,16 @@ public class DailyFinanceXlsxExportService {
 	private static final BigDecimal HUNDRED = new BigDecimal("100");
 
 	private final DailyFinanceEntryRepository dailyRepository;
+	private final ProductCostRepository productCostRepository;
+	private final UserRepository userRepository;
 
-	public DailyFinanceXlsxExportService(DailyFinanceEntryRepository dailyRepository) {
+	public DailyFinanceXlsxExportService(
+			DailyFinanceEntryRepository dailyRepository,
+			ProductCostRepository productCostRepository,
+			UserRepository userRepository) {
 		this.dailyRepository = dailyRepository;
+		this.productCostRepository = productCostRepository;
+		this.userRepository = userRepository;
 	}
 
 	public byte[] exportDailyReport(Long userId, LocalDate dateFrom, LocalDate dateTo) {
@@ -45,7 +55,9 @@ public class DailyFinanceXlsxExportService {
 			throw new IllegalArgumentException("dateFrom must not be after dateTo");
 		}
 
-		List<ReportRow> rows = buildRows(userId, dateFrom, dateTo);
+		User user = userRepository.findById(userId)
+				.orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+		List<ReportRow> rows = buildRows(user, dateFrom, dateTo);
 		try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
 			Sheet sheet = workbook.createSheet("Report");
 			Styles styles = new Styles(workbook);
@@ -66,9 +78,9 @@ public class DailyFinanceXlsxExportService {
 		}
 	}
 
-	private List<ReportRow> buildRows(Long userId, LocalDate dateFrom, LocalDate dateTo) {
+	private List<ReportRow> buildRows(User user, LocalDate dateFrom, LocalDate dateTo) {
 		List<DailyFinanceEntry> entries = dailyRepository
-				.findByUserIdAndBusinessDateBetweenOrderByBusinessDateAscNmIdAsc(userId, dateFrom, dateTo);
+				.findByUserIdAndBusinessDateBetweenOrderByBusinessDateAscNmIdAsc(user.getId(), dateFrom, dateTo);
 		Map<Long, MutableReportRow> byProduct = new LinkedHashMap<>();
 		MutableReportRow common = new MutableReportRow(null, "Общие удержания");
 
@@ -76,7 +88,7 @@ public class DailyFinanceXlsxExportService {
 			MutableReportRow row = entry.getNmId() == null
 					? common
 					: byProduct.computeIfAbsent(entry.getNmId(), nmId -> new MutableReportRow(nmId, entry.getProductName()));
-			row.add(entry);
+			row.add(entry, findActualCostAmount(entry), calculateTax(entry.getNetRevenueAmount(), user.getTaxPercent()));
 		}
 
 		List<ReportRow> rows = byProduct.values().stream()
@@ -91,6 +103,28 @@ public class DailyFinanceXlsxExportService {
 			result.add(commonRow);
 		}
 		return result;
+	}
+
+	private BigDecimal findActualCostAmount(DailyFinanceEntry entry) {
+		if (entry.getNmId() == null || entry.getNetQuantity() == 0) {
+			return BigDecimal.ZERO;
+		}
+		return productCostRepository
+				.findFirstByUserIdAndNmIdAndValidFromLessThanEqualOrderByValidFromDesc(
+						entry.getUserId(),
+						entry.getNmId(),
+						entry.getBusinessDate())
+				.map(productCost -> productCost.getCostAmount()
+						.multiply(BigDecimal.valueOf(entry.getNetQuantity())))
+				.orElse(BigDecimal.ZERO);
+	}
+
+	private static BigDecimal calculateTax(BigDecimal netRevenue, BigDecimal taxPercent) {
+		if (netRevenue.compareTo(BigDecimal.ZERO) <= 0 || taxPercent == null || taxPercent.compareTo(BigDecimal.ZERO) == 0) {
+			return BigDecimal.ZERO;
+		}
+		return netRevenue.multiply(taxPercent)
+				.divide(HUNDRED, 2, RoundingMode.HALF_UP);
 	}
 
 	private static List<ReportRow> applyAbc(List<ReportRow> rows) {
@@ -289,7 +323,7 @@ public class DailyFinanceXlsxExportService {
 			this.productName = productName;
 		}
 
-		private void add(DailyFinanceEntry entry) {
+		private void add(DailyFinanceEntry entry, BigDecimal actualCost, BigDecimal taxAmount) {
 			if ((productName == null || productName.isBlank()) && entry.getProductName() != null) {
 				productName = entry.getProductName();
 			}
@@ -305,9 +339,14 @@ public class DailyFinanceXlsxExportService {
 					.add(entry.getPenaltyAmount())
 					.add(entry.getAdditionalDeductionsAmount());
 			commission = commission.add(entry.getCommissionAmount());
-			tax = tax.add(entry.getTaxAmount());
-			cost = cost.add(entry.getCostAmount());
-			profit = profit.add(entry.getProductProfitAmount());
+			tax = tax.add(taxAmount);
+			cost = cost.add(actualCost);
+			profit = profit.add(entry.getNetRevenueAmount()
+					.subtract(entry.getCommissionAmount())
+					.subtract(entry.getLogisticsAmount())
+					.subtract(entry.getAcquiringAmount())
+					.subtract(actualCost)
+					.subtract(taxAmount));
 		}
 
 		private ReportRow toReportRow() {

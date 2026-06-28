@@ -19,8 +19,6 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import ru.marketplace.finance.account.domain.User;
 import ru.marketplace.finance.account.infrastructure.UserRepository;
-import ru.marketplace.finance.cost.domain.ProductCost;
-import ru.marketplace.finance.cost.infrastructure.ProductCostRepository;
 import ru.marketplace.finance.finance.application.DailyFinanceRecalculationService;
 import ru.marketplace.finance.finance.domain.RawFinancialOperation;
 import ru.marketplace.finance.finance.infrastructure.persistence.RawFinancialOperationRepository;
@@ -51,9 +49,6 @@ class DailyFinanceReportControllerTest {
 	UserRepository userRepository;
 
 	@Autowired
-	ProductCostRepository productCostRepository;
-
-	@Autowired
 	SyncJobRepository syncJobRepository;
 
 	@Autowired
@@ -69,12 +64,6 @@ class DailyFinanceReportControllerTest {
 				"seller-daily-report@example.com",
 				"$2a$10$hash",
 				"Seller"));
-		productCostRepository.saveAndFlush(new ProductCost(
-				user.getId(),
-				123456789L,
-				"Test product",
-				LocalDate.of(2026, 1, 1),
-				new BigDecimal("100.00")));
 		SyncJob syncJob = syncJobRepository.saveAndFlush(new SyncJob(user.getId(), businessDate, businessDate));
 		rawRepository.saveAndFlush(sale(user.getId(), syncJob.getId(), businessDate));
 		recalculationService.recalculate(user.getId(), businessDate, businessDate);
@@ -94,8 +83,8 @@ class DailyFinanceReportControllerTest {
 				.andExpect(jsonPath("$[1].returnsAmount").value(0.00))
 				.andExpect(jsonPath("$[1].netRevenueAmount").value(1000.00))
 				.andExpect(jsonPath("$[1].commissionAmount").value(180.00))
-				.andExpect(jsonPath("$[1].costAmount").value(100.00))
-				.andExpect(jsonPath("$[1].productProfitAmount").value(700.00));
+				.andExpect(jsonPath("$[1].costAmount").doesNotExist())
+				.andExpect(jsonPath("$[1].productProfitAmount").doesNotExist());
 	}
 
 	private static RawFinancialOperation sale(Long userId, Long syncJobId, LocalDate businessDate) {

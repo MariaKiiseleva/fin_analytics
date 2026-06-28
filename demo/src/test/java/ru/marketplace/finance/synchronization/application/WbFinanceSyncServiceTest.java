@@ -177,8 +177,7 @@ class WbFinanceSyncServiceTest {
 				.orElseThrow();
 		assertThat(productRow.getNetRevenueAmount()).isEqualByComparingTo("1000.00");
 		assertThat(productRow.getCommissionAmount()).isEqualByComparingTo("180.00");
-		assertThat(productRow.getCostAmount()).isEqualByComparingTo("100.00");
-		assertThat(productRow.getProductProfitAmount()).isEqualByComparingTo("700.00");
+		assertThat(productRow.getNetRevenueAmount()).isEqualByComparingTo("1000.00");
 	}
 
 	@Test

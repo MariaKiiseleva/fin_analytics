@@ -38,7 +38,14 @@ public interface DailyFinanceEntryRepository extends JpaRepository<DailyFinanceE
 			where entry.userId = :userId
 				and entry.businessDate between :dateFrom and :dateTo
 				and entry.nmId is not null
-				and entry.hasCost = false
+				and entry.netQuantity > 0
+				and not exists (
+					select cost.id
+					from ProductCost cost
+					where cost.userId = entry.userId
+						and cost.nmId = entry.nmId
+						and cost.validFrom <= entry.businessDate
+				)
 			group by entry.nmId
 			order by entry.nmId
 			""")

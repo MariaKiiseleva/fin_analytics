@@ -21,8 +21,6 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import ru.marketplace.finance.account.domain.User;
 import ru.marketplace.finance.account.infrastructure.UserRepository;
-import ru.marketplace.finance.cost.domain.ProductCost;
-import ru.marketplace.finance.cost.infrastructure.ProductCostRepository;
 import ru.marketplace.finance.finance.domain.DailyFinanceEntry;
 import ru.marketplace.finance.finance.domain.RawFinancialOperation;
 import ru.marketplace.finance.finance.infrastructure.persistence.DailyFinanceEntryRepository;
@@ -54,9 +52,6 @@ class DailyFinanceRecalculationControllerTest {
 	UserRepository userRepository;
 
 	@Autowired
-	ProductCostRepository productCostRepository;
-
-	@Autowired
 	SyncJobRepository syncJobRepository;
 
 	@Autowired
@@ -72,12 +67,6 @@ class DailyFinanceRecalculationControllerTest {
 				"seller-recalculate-controller@example.com",
 				"$2a$10$hash",
 				"Seller"));
-		productCostRepository.saveAndFlush(new ProductCost(
-				user.getId(),
-				123456789L,
-				"Test product",
-				LocalDate.of(2026, 1, 1),
-				new BigDecimal("100.00")));
 		SyncJob syncJob = syncJobRepository.saveAndFlush(new SyncJob(user.getId(), businessDate, businessDate));
 		rawRepository.saveAndFlush(sale(user.getId(), syncJob.getId(), businessDate));
 
@@ -101,8 +90,8 @@ class DailyFinanceRecalculationControllerTest {
 		DailyFinanceEntry productRow = dailyRepository
 				.findByUserIdAndBusinessDateAndNmId(user.getId(), businessDate, 123456789L)
 				.orElseThrow();
-		org.assertj.core.api.Assertions.assertThat(productRow.getCostAmount()).isEqualByComparingTo("100.00");
-		org.assertj.core.api.Assertions.assertThat(productRow.getProductProfitAmount()).isEqualByComparingTo("700.00");
+		org.assertj.core.api.Assertions.assertThat(productRow.getNetRevenueAmount()).isEqualByComparingTo("1000.00");
+		org.assertj.core.api.Assertions.assertThat(productRow.getCommissionAmount()).isEqualByComparingTo("180.00");
 	}
 
 	private static RawFinancialOperation sale(Long userId, Long syncJobId, LocalDate businessDate) {

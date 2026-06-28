@@ -18,15 +18,11 @@ public record DailyFinanceEntryView(
 		BigDecimal netRevenueAmount,
 		BigDecimal commissionAmount,
 		BigDecimal logisticsAmount,
-		BigDecimal costAmount,
-		BigDecimal taxAmount,
-		BigDecimal productProfitAmount,
 		BigDecimal acquiringAmount,
 		BigDecimal storageAmount,
 		BigDecimal acceptanceAmount,
 		BigDecimal penaltyAmount,
 		BigDecimal additionalDeductionsAmount,
-		Boolean hasCost,
 		Integer calculationVersion) {
 
 	static DailyFinanceEntryView from(DailyFinanceEntry entry) {
@@ -44,15 +40,11 @@ public record DailyFinanceEntryView(
 				entry.getNetRevenueAmount(),
 				entry.getCommissionAmount(),
 				entry.getLogisticsAmount(),
-				entry.getCostAmount(),
-				entry.getTaxAmount(),
-				entry.getProductProfitAmount(),
 				entry.getAcquiringAmount(),
 				entry.getStorageAmount(),
 				entry.getAcceptanceAmount(),
 				entry.getPenaltyAmount(),
 				entry.getAdditionalDeductionsAmount(),
-				entry.getHasCost(),
 				entry.getCalculationVersion());
 	}
 }

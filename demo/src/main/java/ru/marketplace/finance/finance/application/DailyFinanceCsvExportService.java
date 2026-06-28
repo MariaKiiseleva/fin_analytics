@@ -55,11 +55,7 @@ public class DailyFinanceCsvExportService {
 				"storage_amount",
 				"acceptance_amount",
 				"penalty_amount",
-				"additional_deductions_amount",
-				"cost_amount",
-				"tax_amount",
-				"product_profit_amount",
-				"has_cost"));
+				"additional_deductions_amount"));
 
 		for (DailyFinanceEntry entry : entries) {
 			appendRow(csv, List.of(
@@ -78,11 +74,7 @@ public class DailyFinanceCsvExportService {
 					value(entry.getStorageAmount()),
 					value(entry.getAcceptanceAmount()),
 					value(entry.getPenaltyAmount()),
-					value(entry.getAdditionalDeductionsAmount()),
-					value(entry.getCostAmount()),
-					value(entry.getTaxAmount()),
-					value(entry.getProductProfitAmount()),
-					value(entry.getHasCost())));
+					value(entry.getAdditionalDeductionsAmount())));
 		}
 
 		return csv.toString().getBytes(StandardCharsets.UTF_8);

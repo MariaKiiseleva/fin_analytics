@@ -16,7 +16,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import ru.marketplace.finance.account.domain.User;
 import ru.marketplace.finance.account.infrastructure.UserRepository;
-import ru.marketplace.finance.cost.infrastructure.ProductCostRepository;
 import ru.marketplace.finance.finance.domain.DailyFinanceEntry;
 import ru.marketplace.finance.finance.domain.RawFinancialOperation;
 import ru.marketplace.finance.finance.infrastructure.persistence.DailyFinanceEntryRepository;
@@ -27,25 +26,20 @@ public class DailyFinanceRecalculationService {
 
 	private static final int CALCULATION_VERSION = 1;
 	private static final BigDecimal ZERO = BigDecimal.ZERO;
-	private static final BigDecimal ONE_HUNDRED = new BigDecimal("100");
 
 	private final UserRepository userRepository;
-	private final ProductCostRepository productCostRepository;
 	private final RawFinancialOperationRepository rawRepository;
 	private final DailyFinanceEntryRepository dailyRepository;
 	private final ObjectMapper objectMapper;
 	private final FinancialOperationClassifier operationClassifier = new FinancialOperationClassifier();
 	private final RawOperationMoneyCalculator moneyCalculator = new RawOperationMoneyCalculator();
-	private final ProductProfitCalculator profitCalculator = new ProductProfitCalculator();
 
 	public DailyFinanceRecalculationService(
 			UserRepository userRepository,
-			ProductCostRepository productCostRepository,
 			RawFinancialOperationRepository rawRepository,
 			DailyFinanceEntryRepository dailyRepository,
 			ObjectMapper objectMapper) {
 		this.userRepository = userRepository;
-		this.productCostRepository = productCostRepository;
 		this.rawRepository = rawRepository;
 		this.dailyRepository = dailyRepository;
 		this.objectMapper = objectMapper;
@@ -58,7 +52,8 @@ public class DailyFinanceRecalculationService {
 		if (dateFrom.isAfter(dateTo)) {
 			throw new IllegalArgumentException("dateFrom must not be after dateTo");
 		}
-		User user = userRepository.findById(userId)
+		Long existingUserId = userRepository.findById(userId)
+				.map(User::getId)
 				.orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
 		List<RawFinancialOperation> operations = rawRepository
 				.findByUserIdAndBusinessDateBetweenOrderByBusinessDateAscIdAsc(userId, dateFrom, dateTo);
@@ -81,15 +76,15 @@ public class DailyFinanceRecalculationService {
 		dailyRepository.flush();
 		int savedRows = 0;
 		for (DayAccumulator day : days.values()) {
-			savedRows += saveDay(user, day);
+			savedRows += saveDay(existingUserId, day);
 		}
 
 		return new DailyFinanceRecalculationResult(operations.size(), days.size(), savedRows, unrecognizedRows);
 	}
 
-	private int saveDay(User user, DayAccumulator day) {
+	private int saveDay(Long userId, DayAccumulator day) {
 		day.prepareProductRows();
-		DailyFinanceEntry commonRow = DailyFinanceEntry.commonRow(user.getId(), day.businessDate, CALCULATION_VERSION);
+		DailyFinanceEntry commonRow = DailyFinanceEntry.commonRow(userId, day.businessDate, CALCULATION_VERSION);
 		commonRow.replaceCommonExpenses(
 				day.commonAcquiring,
 				day.commonStorage,
@@ -100,17 +95,8 @@ public class DailyFinanceRecalculationService {
 
 		int savedRows = 1;
 		for (ProductAccumulator product : day.products.values()) {
-			BigDecimal costAmount = resolveCostAmount(user.getId(), product, day.businessDate);
-			BigDecimal taxAmount = calculateTax(product.netRevenue(), user.getTaxPercent());
-			BigDecimal profitAmount = profitCalculator.calculate(new ProductProfitInput(
-					product.netRevenue(),
-					product.commission,
-					product.logistics,
-					product.acquiring,
-					costAmount,
-					taxAmount));
 			DailyFinanceEntry productRow = DailyFinanceEntry.productRow(
-					user.getId(),
+					userId,
 					day.businessDate,
 					product.nmId,
 					product.productName,
@@ -122,33 +108,11 @@ public class DailyFinanceRecalculationService {
 					product.returnsAmount,
 					product.commission,
 					product.logistics,
-					product.acquiring,
-					costAmount,
-					taxAmount,
-					profitAmount,
-					product.hasCost);
+					product.acquiring);
 			dailyRepository.save(productRow);
 			savedRows++;
 		}
 		return savedRows;
-	}
-
-	private BigDecimal resolveCostAmount(Long userId, ProductAccumulator product, LocalDate businessDate) {
-		if (product.netQuantity() <= 0) {
-			product.hasCost = true;
-			return ZERO;
-		}
-		return productCostRepository
-				.findFirstByUserIdAndNmIdAndValidFromLessThanEqualOrderByValidFromDesc(
-						userId,
-						product.nmId,
-						businessDate)
-				.map(cost -> cost.getCostAmount().multiply(BigDecimal.valueOf(product.netQuantity())))
-				.map(DailyFinanceRecalculationService::money)
-				.orElseGet(() -> {
-					product.hasCost = false;
-					return ZERO;
-				});
 	}
 
 	private Map<LocalDate, DayAccumulator> createDays(LocalDate dateFrom, LocalDate dateTo) {
@@ -193,24 +157,12 @@ public class DailyFinanceRecalculationService {
 				operation.getDeductionAmount());
 	}
 
-	private static BigDecimal calculateTax(BigDecimal netRevenue, BigDecimal taxPercent) {
-		if (netRevenue.compareTo(ZERO) <= 0 || taxPercent == null || taxPercent.compareTo(ZERO) == 0) {
-			return ZERO;
-		}
-		return netRevenue.multiply(taxPercent)
-				.divide(ONE_HUNDRED, 2, RoundingMode.HALF_UP);
-	}
-
 	private static boolean hasProduct(RawFinancialOperation operation) {
 		return operation.getNmId() != null && operation.getNmId() > 0;
 	}
 
 	private static boolean hasOrder(RawFinancialOperation operation) {
 		return operation.getSrid() != null && !operation.getSrid().isBlank();
-	}
-
-	private static BigDecimal money(BigDecimal value) {
-		return value.setScale(2, RoundingMode.HALF_UP);
 	}
 
 	private final class DayAccumulator {
@@ -436,7 +388,6 @@ public class DailyFinanceRecalculationService {
 		private BigDecimal commission = ZERO;
 		private BigDecimal logistics = ZERO;
 		private BigDecimal acquiring = ZERO;
-		private boolean hasCost = true;
 
 		private ProductAccumulator(Long nmId) {
 			this.nmId = nmId;
@@ -459,8 +410,5 @@ public class DailyFinanceRecalculationService {
 			return salesQuantity - returnQuantity;
 		}
 
-		private BigDecimal netRevenue() {
-			return salesAmount.subtract(returnsAmount);
-		}
 	}
 }

@@ -14,8 +14,6 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import ru.marketplace.finance.account.domain.User;
 import ru.marketplace.finance.account.infrastructure.UserRepository;
-import ru.marketplace.finance.cost.domain.ProductCost;
-import ru.marketplace.finance.cost.infrastructure.ProductCostRepository;
 import ru.marketplace.finance.finance.domain.ClassificationStatus;
 import ru.marketplace.finance.finance.domain.DailyFinanceEntry;
 import ru.marketplace.finance.finance.domain.RawFinancialOperation;
@@ -44,9 +42,6 @@ class DailyFinanceRecalculationServiceTest {
 	UserRepository userRepository;
 
 	@Autowired
-	ProductCostRepository productCostRepository;
-
-	@Autowired
 	SyncJobRepository syncJobRepository;
 
 	@Autowired
@@ -63,18 +58,6 @@ class DailyFinanceRecalculationServiceTest {
 		User user = new User("seller@example.com", "$2a$10$hash", "Seller");
 		user.changeTaxPercent(new BigDecimal("10.0000"));
 		user = userRepository.saveAndFlush(user);
-		productCostRepository.saveAndFlush(new ProductCost(
-				user.getId(),
-				123456789L,
-				"Test product",
-				LocalDate.of(2026, 1, 1),
-				new BigDecimal("100.00")));
-		productCostRepository.saveAndFlush(new ProductCost(
-				user.getId(),
-				222222222L,
-				"Second product",
-				LocalDate.of(2026, 1, 1),
-				new BigDecimal("50.00")));
 		SyncJob syncJob = syncJobRepository.saveAndFlush(new SyncJob(
 				user.getId(),
 				LocalDate.of(2026, 6, 15),
@@ -108,10 +91,6 @@ class DailyFinanceRecalculationServiceTest {
 		assertThat(productRow.getCommissionAmount()).isEqualByComparingTo("135.00");
 		assertThat(productRow.getLogisticsAmount()).isEqualByComparingTo("90.00");
 		assertThat(productRow.getAcquiringAmount()).isEqualByComparingTo("35.00");
-		assertThat(productRow.getCostAmount()).isEqualByComparingTo("100.00");
-		assertThat(productRow.getTaxAmount()).isEqualByComparingTo("60.00");
-		assertThat(productRow.getProductProfitAmount()).isEqualByComparingTo("180.00");
-		assertThat(productRow.getHasCost()).isTrue();
 		DailyFinanceEntry secondProductRow = dailyRepository
 				.findByUserIdAndBusinessDateAndNmId(user.getId(), businessDate, 222222222L)
 				.orElseThrow();
@@ -120,7 +99,6 @@ class DailyFinanceRecalculationServiceTest {
 		assertThat(secondProductRow.getCommissionAmount()).isEqualByComparingTo("90.00");
 		assertThat(secondProductRow.getLogisticsAmount()).isEqualByComparingTo("0.00");
 		assertThat(secondProductRow.getAcquiringAmount()).isEqualByComparingTo("10.00");
-		assertThat(secondProductRow.getProductProfitAmount()).isEqualByComparingTo("300.00");
 
 		DailyFinanceEntry commonRow = dailyRepository
 				.findByUserIdAndBusinessDateAndNmIdIsNull(user.getId(), businessDate)

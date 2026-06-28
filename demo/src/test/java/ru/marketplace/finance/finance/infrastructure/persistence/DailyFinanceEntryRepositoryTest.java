@@ -55,11 +55,7 @@ class DailyFinanceEntryRepositoryTest {
 				new BigDecimal("1000.00"),
 				new BigDecimal("250.00"),
 				new BigDecimal("180.00"),
-				new BigDecimal("45.00"),
-				new BigDecimal("900.00"),
-				new BigDecimal("120.00"),
-				new BigDecimal("550.00"),
-				true);
+				new BigDecimal("45.00"));
 		DailyFinanceEntry commonRow = DailyFinanceEntry.commonRow(user.getId(), businessDate, 1);
 		commonRow.replaceCommonExpenses(
 				new BigDecimal("45.00"),
@@ -80,7 +76,6 @@ class DailyFinanceEntryRepositoryTest {
 				.satisfies(found -> {
 					assertThat(found.getNetQuantity()).isEqualTo(2);
 					assertThat(found.getNetRevenueAmount()).isEqualByComparingTo("2000.00");
-					assertThat(found.getProductProfitAmount()).isEqualByComparingTo("550.00");
 				});
 		assertThat(dailyRepository.findByUserIdAndBusinessDateAndNmIdIsNull(user.getId(), businessDate))
 				.get()

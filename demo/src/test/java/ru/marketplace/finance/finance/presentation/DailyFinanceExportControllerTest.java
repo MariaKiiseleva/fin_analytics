@@ -25,6 +25,8 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import ru.marketplace.finance.account.domain.User;
 import ru.marketplace.finance.account.infrastructure.UserRepository;
+import ru.marketplace.finance.cost.domain.ProductCost;
+import ru.marketplace.finance.cost.infrastructure.ProductCostRepository;
 import ru.marketplace.finance.finance.domain.DailyFinanceEntry;
 import ru.marketplace.finance.finance.infrastructure.persistence.DailyFinanceEntryRepository;
 
@@ -54,6 +56,9 @@ class DailyFinanceExportControllerTest {
 	@Autowired
 	DailyFinanceEntryRepository dailyRepository;
 
+	@Autowired
+	ProductCostRepository productCostRepository;
+
 	@Test
 	void exportsDailyReportAsCsv() throws Exception {
 		User user = userRepository.saveAndFlush(new User(
@@ -62,6 +67,12 @@ class DailyFinanceExportControllerTest {
 				"Seller"));
 		dailyRepository.saveAndFlush(productRow(user.getId(), LocalDate.of(2026, 6, 21)));
 		dailyRepository.saveAndFlush(commonRow(user.getId(), LocalDate.of(2026, 6, 21)));
+		productCostRepository.saveAndFlush(new ProductCost(
+				user.getId(),
+				123456789L,
+				"Test Product",
+				LocalDate.of(2026, 6, 1),
+				new BigDecimal("250.00")));
 
 		byte[] response = mockMvc.perform(get("/api/reports/daily/export.csv")
 						.with(user("seller"))
@@ -82,7 +93,8 @@ class DailyFinanceExportControllerTest {
 				"2026-06-21;;;0;0;0",
 				"2026-06-21;123456789;Test Product;1;0;1;1000");
 		assertThat(csv).contains("2026-06-21;123456789;Test Product;1;0;1;1000");
-		assertThat(csv).contains(";100;0;700;true");
+		assertThat(csv).doesNotContain("cost_amount");
+		assertThat(csv).doesNotContain("product_profit_amount");
 	}
 
 	@Test
@@ -93,6 +105,12 @@ class DailyFinanceExportControllerTest {
 				"Seller"));
 		dailyRepository.saveAndFlush(productRow(user.getId(), LocalDate.of(2026, 6, 21)));
 		dailyRepository.saveAndFlush(commonRow(user.getId(), LocalDate.of(2026, 6, 21)));
+		productCostRepository.saveAndFlush(new ProductCost(
+				user.getId(),
+				123456789L,
+				"Test Product",
+				LocalDate.of(2026, 6, 1),
+				new BigDecimal("250.00")));
 
 		byte[] response = mockMvc.perform(get("/api/reports/daily/export.xlsx")
 						.with(user("seller"))
@@ -115,7 +133,8 @@ class DailyFinanceExportControllerTest {
 			assertThat(sheet.getRow(3).getCell(0).getStringCellValue()).isEqualTo("Товар");
 			assertThat(sheet.getRow(4).getCell(0).getStringCellValue()).isEqualTo("Test Product");
 			assertThat(sheet.getRow(4).getCell(1).getNumericCellValue()).isEqualTo(123456789D);
-			assertThat(sheet.getRow(4).getCell(10).getNumericCellValue()).isEqualTo(700D);
+			assertThat(sheet.getRow(4).getCell(2).getNumericCellValue()).isEqualTo(250D);
+			assertThat(sheet.getRow(4).getCell(10).getNumericCellValue()).isEqualTo(550D);
 			assertThat(sheet.getRow(5).getCell(0).getStringCellValue()).isEqualTo("Общие удержания");
 			assertThat(sheet.getRow(5).getCell(7).getNumericCellValue()).isEqualTo(250D);
 		}
@@ -141,11 +160,7 @@ class DailyFinanceExportControllerTest {
 				BigDecimal.ZERO,
 				new BigDecimal("180.00"),
 				BigDecimal.ZERO,
-				new BigDecimal("20.00"),
-				new BigDecimal("100.00"),
-				BigDecimal.ZERO,
-				new BigDecimal("700.00"),
-				true);
+				new BigDecimal("20.00"));
 		return entry;
 	}
 }

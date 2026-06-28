@@ -56,15 +56,6 @@ public class DailyFinanceEntry {
 	@Column(name = "logistics_amount", nullable = false, precision = 19, scale = 2)
 	private BigDecimal logisticsAmount;
 
-	@Column(name = "cost_amount", nullable = false, precision = 19, scale = 2)
-	private BigDecimal costAmount;
-
-	@Column(name = "tax_amount", nullable = false, precision = 19, scale = 2)
-	private BigDecimal taxAmount;
-
-	@Column(name = "product_profit_amount", nullable = false, precision = 19, scale = 2)
-	private BigDecimal productProfitAmount;
-
 	@Column(name = "acquiring_amount", nullable = false, precision = 19, scale = 2)
 	private BigDecimal acquiringAmount;
 
@@ -79,9 +70,6 @@ public class DailyFinanceEntry {
 
 	@Column(name = "additional_deductions_amount", nullable = false, precision = 19, scale = 2)
 	private BigDecimal additionalDeductionsAmount;
-
-	@Column(name = "has_cost", nullable = false)
-	private Boolean hasCost;
 
 	@Column(name = "calculation_version", nullable = false)
 	private Integer calculationVersion;
@@ -172,18 +160,6 @@ public class DailyFinanceEntry {
 		return logisticsAmount;
 	}
 
-	public BigDecimal getCostAmount() {
-		return costAmount;
-	}
-
-	public BigDecimal getTaxAmount() {
-		return taxAmount;
-	}
-
-	public BigDecimal getProductProfitAmount() {
-		return productProfitAmount;
-	}
-
 	public BigDecimal getAcquiringAmount() {
 		return acquiringAmount;
 	}
@@ -204,10 +180,6 @@ public class DailyFinanceEntry {
 		return additionalDeductionsAmount;
 	}
 
-	public Boolean getHasCost() {
-		return hasCost;
-	}
-
 	public Integer getCalculationVersion() {
 		return calculationVersion;
 	}
@@ -219,11 +191,7 @@ public class DailyFinanceEntry {
 			BigDecimal returnsAmount,
 			BigDecimal commissionAmount,
 			BigDecimal logisticsAmount,
-			BigDecimal acquiringAmount,
-			BigDecimal costAmount,
-			BigDecimal taxAmount,
-			BigDecimal productProfitAmount,
-			boolean hasCost) {
+			BigDecimal acquiringAmount) {
 		requireProductRow();
 		this.salesQuantity = salesQuantity;
 		this.returnQuantity = returnQuantity;
@@ -234,10 +202,6 @@ public class DailyFinanceEntry {
 		this.commissionAmount = amountOrZero(commissionAmount);
 		this.logisticsAmount = amountOrZero(logisticsAmount);
 		this.acquiringAmount = amountOrZero(acquiringAmount);
-		this.costAmount = amountOrZero(costAmount);
-		this.taxAmount = amountOrZero(taxAmount);
-		this.productProfitAmount = amountOrZero(productProfitAmount);
-		this.hasCost = hasCost;
 		refreshCalculationTime();
 	}
 
@@ -269,15 +233,11 @@ public class DailyFinanceEntry {
 		this.netRevenueAmount = ZERO_AMOUNT;
 		this.commissionAmount = ZERO_AMOUNT;
 		this.logisticsAmount = ZERO_AMOUNT;
-		this.costAmount = ZERO_AMOUNT;
-		this.taxAmount = ZERO_AMOUNT;
-		this.productProfitAmount = ZERO_AMOUNT;
 		this.acquiringAmount = ZERO_AMOUNT;
 		this.storageAmount = ZERO_AMOUNT;
 		this.acceptanceAmount = ZERO_AMOUNT;
 		this.penaltyAmount = ZERO_AMOUNT;
 		this.additionalDeductionsAmount = ZERO_AMOUNT;
-		this.hasCost = true;
 	}
 
 	private void requireProductRow() {
