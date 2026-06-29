@@ -3,6 +3,7 @@ package ru.marketplace.finance.cost.presentation;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -129,6 +130,85 @@ class ProductCostControllerTest {
 				.andExpect(jsonPath("$[0].costAmount").value(650.00))
 				.andExpect(jsonPath("$[1].nmId").value(164230893))
 				.andExpect(jsonPath("$[1].costAmount").value(300.00));
+	}
+
+	@Test
+	void returnsAllProductCostsWhenNmIdIsNotProvided() throws Exception {
+		User user = userRepository.saveAndFlush(new User(
+				"seller-product-cost-all-controller@example.com",
+				"$2a$10$hash",
+				"Seller"));
+
+		mockMvc.perform(post("/api/product-costs/batch")
+						.with(user("seller"))
+						.with(csrf())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "userId": %d,
+								  "items": [
+								    {
+								      "nmId": 125167917,
+								      "productName": "First product",
+								      "validFrom": "2026-06-01",
+								      "costAmount": 650.00
+								    },
+								    {
+								      "nmId": 164230893,
+								      "productName": "Second product",
+								      "validFrom": "2026-06-01",
+								      "costAmount": 300.00
+								    }
+								  ]
+								}
+								""".formatted(user.getId())))
+				.andExpect(status().isCreated());
+
+		mockMvc.perform(get("/api/product-costs")
+						.with(user("seller"))
+						.param("userId", user.getId().toString()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$[0].nmId").value(125167917))
+				.andExpect(jsonPath("$[1].nmId").value(164230893));
+	}
+
+	@Test
+	void deletesProductCost() throws Exception {
+		User user = userRepository.saveAndFlush(new User(
+				"seller-product-cost-delete-controller@example.com",
+				"$2a$10$hash",
+				"Seller"));
+
+		String response = mockMvc.perform(post("/api/product-costs")
+						.with(user("seller"))
+						.with(csrf())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "userId": %d,
+								  "nmId": 125167917,
+								  "productName": "First product",
+								  "validFrom": "2026-06-01",
+								  "costAmount": 650.00
+								}
+								""".formatted(user.getId())))
+				.andExpect(status().isCreated())
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+		Number productCostId = com.jayway.jsonpath.JsonPath.read(response, "$.id");
+
+		mockMvc.perform(delete("/api/product-costs/{productCostId}", productCostId)
+						.with(user("seller"))
+						.with(csrf())
+						.param("userId", user.getId().toString()))
+				.andExpect(status().isNoContent());
+
+		mockMvc.perform(get("/api/product-costs")
+						.with(user("seller"))
+						.param("userId", user.getId().toString()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$").isEmpty());
 	}
 
 	@Test

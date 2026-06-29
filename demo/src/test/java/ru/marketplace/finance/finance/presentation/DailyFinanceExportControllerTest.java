@@ -144,6 +144,37 @@ class DailyFinanceExportControllerTest {
 		}
 	}
 
+	@Test
+	void exportsXlsxWithAbcCalculatedByRevenueContribution() throws Exception {
+		User user = userRepository.saveAndFlush(new User(
+				"seller-xlsx-abc-export@example.com",
+				"$2a$10$hash",
+				"Seller"));
+		dailyRepository.saveAndFlush(productRow(user.getId(), LocalDate.of(2026, 6, 21), 1L, "High revenue", "850.00"));
+		dailyRepository.saveAndFlush(productRow(user.getId(), LocalDate.of(2026, 6, 21), 2L, "Middle revenue", "100.00"));
+		dailyRepository.saveAndFlush(productRow(user.getId(), LocalDate.of(2026, 6, 21), 3L, "Low revenue", "50.00"));
+
+		byte[] response = mockMvc.perform(get("/api/reports/daily/export.xlsx")
+						.with(user("seller"))
+						.param("userId", user.getId().toString())
+						.param("dateFrom", "2026-06-21")
+						.param("dateTo", "2026-06-21"))
+				.andExpect(status().isOk())
+				.andReturn()
+				.getResponse()
+				.getContentAsByteArray();
+
+		try (Workbook workbook = new XSSFWorkbook(new ByteArrayInputStream(response))) {
+			Sheet sheet = workbook.getSheet("Report");
+			assertThat(sheet.getRow(4).getCell(0).getStringCellValue()).isEqualTo("High revenue");
+			assertThat(sheet.getRow(4).getCell(17).getStringCellValue()).isEqualTo("A");
+			assertThat(sheet.getRow(5).getCell(0).getStringCellValue()).isEqualTo("Middle revenue");
+			assertThat(sheet.getRow(5).getCell(17).getStringCellValue()).isEqualTo("B");
+			assertThat(sheet.getRow(6).getCell(0).getStringCellValue()).isEqualTo("Low revenue");
+			assertThat(sheet.getRow(6).getCell(17).getStringCellValue()).isEqualTo("C");
+		}
+	}
+
 	private static DailyFinanceEntry commonRow(Long userId, LocalDate businessDate) {
 		DailyFinanceEntry entry = DailyFinanceEntry.commonRow(userId, businessDate, 1);
 		entry.replaceCommonExpenses(
@@ -165,6 +196,24 @@ class DailyFinanceExportControllerTest {
 				new BigDecimal("180.00"),
 				BigDecimal.ZERO,
 				new BigDecimal("20.00"));
+		return entry;
+	}
+
+	private static DailyFinanceEntry productRow(
+			Long userId,
+			LocalDate businessDate,
+			Long nmId,
+			String productName,
+			String salesAmount) {
+		DailyFinanceEntry entry = DailyFinanceEntry.productRow(userId, businessDate, nmId, productName, 1);
+		entry.replaceProductTotals(
+				1,
+				0,
+				new BigDecimal(salesAmount),
+				BigDecimal.ZERO,
+				BigDecimal.ZERO,
+				BigDecimal.ZERO,
+				BigDecimal.ZERO);
 		return entry;
 	}
 }

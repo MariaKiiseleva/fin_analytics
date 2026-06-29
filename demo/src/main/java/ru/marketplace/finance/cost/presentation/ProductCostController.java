@@ -11,6 +11,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -100,7 +102,18 @@ public class ProductCostController {
 	@GetMapping
 	public List<ProductCostView> findProductCosts(
 			@RequestParam @Positive Long userId,
-			@RequestParam @Positive Long nmId) {
+			@RequestParam(required = false) @Positive Long nmId) {
+		if (nmId == null) {
+			return productCostService.findAllProductCosts(userId);
+		}
 		return productCostService.findProductCosts(userId, nmId);
+	}
+
+	@DeleteMapping("/{productCostId}")
+	@ResponseStatus(HttpStatus.NO_CONTENT)
+	public void deleteProductCost(
+			@PathVariable @Positive Long productCostId,
+			@RequestParam @Positive Long userId) {
+		productCostService.deleteProductCost(userId, productCostId);
 	}
 }

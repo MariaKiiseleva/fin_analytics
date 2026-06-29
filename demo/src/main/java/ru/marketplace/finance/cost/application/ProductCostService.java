@@ -74,6 +74,26 @@ public class ProductCostService {
 				.toList();
 	}
 
+	@Transactional(readOnly = true)
+	public List<ProductCostView> findAllProductCosts(Long userId) {
+		requireExistingUser(userId);
+		return productCostRepository.findByUserIdOrderByNmIdAscValidFromDesc(userId).stream()
+				.map(ProductCostView::from)
+				.toList();
+	}
+
+	@Transactional
+	public void deleteProductCost(Long userId, Long productCostId) {
+		requireExistingUser(userId);
+		requirePositive(productCostId, "productCostId");
+		ProductCost productCost = productCostRepository.findById(productCostId)
+				.orElseThrow(() -> new IllegalArgumentException("Product cost not found: " + productCostId));
+		if (!productCost.getUserId().equals(userId)) {
+			throw new IllegalArgumentException("Product cost not found: " + productCostId);
+		}
+		productCostRepository.delete(productCost);
+	}
+
 	private ProductCostView saveProductCostAfterUserCheck(
 			Long userId,
 			Long nmId,

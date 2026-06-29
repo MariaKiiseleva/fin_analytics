@@ -21,6 +21,8 @@ import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.VerticalAlignment;
 import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFCellStyle;
+import org.apache.poi.xssf.usermodel.XSSFColor;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.stereotype.Service;
 import ru.marketplace.finance.account.domain.User;
@@ -93,7 +95,7 @@ public class DailyFinanceXlsxExportService {
 
 		List<ReportRow> rows = byProduct.values().stream()
 				.map(MutableReportRow::toReportRow)
-				.sorted(Comparator.comparing(ReportRow::profit).reversed())
+				.sorted(Comparator.comparing(ReportRow::netRevenue).reversed())
 				.toList();
 		rows = applyAbc(rows);
 
@@ -128,23 +130,24 @@ public class DailyFinanceXlsxExportService {
 	}
 
 	private static List<ReportRow> applyAbc(List<ReportRow> rows) {
-		BigDecimal positiveProfit = rows.stream()
-				.map(ReportRow::profit)
+		BigDecimal positiveRevenue = rows.stream()
+				.map(ReportRow::netRevenue)
 				.filter(value -> value.signum() > 0)
 				.reduce(BigDecimal.ZERO, BigDecimal::add);
 		BigDecimal cumulative = BigDecimal.ZERO;
 		List<ReportRow> result = new ArrayList<>();
 		for (ReportRow row : rows) {
 			String group = "C";
-			if (positiveProfit.signum() > 0 && row.profit().signum() > 0) {
-				cumulative = cumulative.add(row.profit());
-				BigDecimal share = cumulative.divide(positiveProfit, 6, RoundingMode.HALF_UP);
-				if (share.compareTo(new BigDecimal("0.80")) <= 0) {
+			BigDecimal revenue = row.netRevenue();
+			if (positiveRevenue.signum() > 0 && revenue.signum() > 0) {
+				BigDecimal shareBeforeRow = cumulative.divide(positiveRevenue, 6, RoundingMode.HALF_UP);
+				if (shareBeforeRow.compareTo(new BigDecimal("0.80")) < 0) {
 					group = "A";
 				}
-				else if (share.compareTo(new BigDecimal("0.95")) <= 0) {
+				else if (shareBeforeRow.compareTo(new BigDecimal("0.95")) < 0) {
 					group = "B";
 				}
+				cumulative = cumulative.add(revenue);
 			}
 			result.add(row.withAbc(group));
 		}
@@ -212,7 +215,7 @@ public class DailyFinanceXlsxExportService {
 			writeMoney(row, 14, reportRow.profit(), styles.profit(reportRow.profit()));
 			writeMoney(row, 15, reportRow.marginPercent(), styles.percent);
 			writeMoney(row, 16, reportRow.buyoutPercent(), styles.percent);
-			writeText(row, 17, reportRow.abc(), styles.text);
+			writeText(row, 17, reportRow.abc(), styles.abc(reportRow.abc()));
 		}
 	}
 
@@ -310,6 +313,10 @@ public class DailyFinanceXlsxExportService {
 					marginPercent,
 					buyoutPercent,
 					group);
+		}
+
+		private BigDecimal netRevenue() {
+			return sales.subtract(returnsAmount);
 		}
 
 		private boolean hasValues() {
@@ -435,6 +442,9 @@ public class DailyFinanceXlsxExportService {
 		private final CellStyle total;
 		private final CellStyle totalInteger;
 		private final CellStyle totalMoney;
+		private final CellStyle abcA;
+		private final CellStyle abcB;
+		private final CellStyle abcC;
 
 		private Styles(Workbook workbook) {
 			short moneyFormat = workbook.createDataFormat().getFormat("#,##0.00");
@@ -456,8 +466,7 @@ public class DailyFinanceXlsxExportService {
 			header.setAlignment(HorizontalAlignment.CENTER);
 			header.setVerticalAlignment(VerticalAlignment.CENTER);
 			header.setWrapText(true);
-			header.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-			header.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+			setSoftFill(header, 229, 243, 255);
 			Font headerFont = workbook.createFont();
 			headerFont.setBold(true);
 			header.setFont(headerFont);
@@ -486,8 +495,7 @@ public class DailyFinanceXlsxExportService {
 			Font totalFont = workbook.createFont();
 			totalFont.setBold(true);
 			total.setFont(totalFont);
-			total.setFillPattern(FillPatternType.SOLID_FOREGROUND);
-			total.setFillForegroundColor(IndexedColors.GREY_25_PERCENT.getIndex());
+			setSoftFill(total, 232, 245, 233);
 
 			totalInteger = workbook.createCellStyle();
 			totalInteger.cloneStyleFrom(total);
@@ -496,10 +504,48 @@ public class DailyFinanceXlsxExportService {
 			totalMoney = workbook.createCellStyle();
 			totalMoney.cloneStyleFrom(total);
 			totalMoney.setDataFormat(moneyFormat);
+
+			abcA = abcStyle(workbook, IndexedColors.LIGHT_GREEN);
+			abcB = abcStyle(workbook, IndexedColors.LIGHT_YELLOW);
+			abcC = abcStyle(workbook, IndexedColors.ROSE);
 		}
 
 		private CellStyle profit(BigDecimal value) {
 			return value.signum() < 0 ? negative : positive;
+		}
+
+		private CellStyle abc(String value) {
+			if (value == null) {
+				return text;
+			}
+			return switch (value) {
+				case "A" -> abcA;
+				case "B" -> abcB;
+				case "C" -> abcC;
+				default -> text;
+			};
+		}
+
+		private static CellStyle abcStyle(Workbook workbook, IndexedColors color) {
+			CellStyle style = bordered(workbook);
+			style.setAlignment(HorizontalAlignment.CENTER);
+			style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+			style.setFillForegroundColor(color.getIndex());
+			Font font = workbook.createFont();
+			font.setBold(true);
+			style.setFont(font);
+			return style;
+		}
+
+		private static void setSoftFill(CellStyle style, int red, int green, int blue) {
+			style.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+			if (style instanceof XSSFCellStyle xssfStyle) {
+				xssfStyle.setFillForegroundColor(new XSSFColor(new byte[] {
+						(byte) red,
+						(byte) green,
+						(byte) blue
+				}, null));
+			}
 		}
 
 		private static CellStyle bordered(Workbook workbook) {

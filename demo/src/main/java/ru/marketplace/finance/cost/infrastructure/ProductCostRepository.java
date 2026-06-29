@@ -12,6 +12,8 @@ public interface ProductCostRepository extends JpaRepository<ProductCost, Long> 
 
 	List<ProductCost> findByUserIdAndNmIdOrderByValidFromDesc(Long userId, Long nmId);
 
+	List<ProductCost> findByUserIdOrderByNmIdAscValidFromDesc(Long userId);
+
 	Optional<ProductCost> findFirstByUserIdAndNmIdAndValidFromLessThanEqualOrderByValidFromDesc(
 			Long userId,
 			Long nmId,
