@@ -18,4 +18,8 @@ public interface ProductCostRepository extends JpaRepository<ProductCost, Long> 
 			Long userId,
 			Long nmId,
 			LocalDate businessDate);
+
+	long deleteByUserId(Long userId);
+
+	long countByUserId(Long userId);
 }

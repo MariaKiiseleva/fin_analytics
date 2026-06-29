@@ -1,8 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { AuthScreen } from './components/AuthScreen.jsx';
+import { ConfirmDialog } from './components/ConfirmDialog.jsx';
+import { AdminPage } from './pages/AdminPage.jsx';
+import { CostsPage } from './pages/CostsPage.jsx';
+import { ProfilePage } from './pages/ProfilePage.jsx';
 import './styles.css';
 
-const USER_ID = 1;
 const MONTH_NAMES = [
   'Январь',
   'Февраль',
@@ -21,6 +25,10 @@ const WEEK_DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 const CHART_COLORS = ['#2563eb', '#16a34a', '#f59e0b', '#dc2626', '#7c3aed', '#0891b2', '#db2777', '#65a30d', '#475569'];
 const moneyFormatter = new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' });
 const numberFormatter = new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 2 });
+const dateTimeFormatter = new Intl.DateTimeFormat('ru-RU', {
+  dateStyle: 'short',
+  timeStyle: 'short',
+});
 
 function formatDate(date) {
   const year = date.getFullYear();
@@ -47,6 +55,26 @@ function formatPercent(value) {
     return '—';
   }
   return `${numberFormatter.format(toNumber(value))}%`;
+}
+
+function formatDateTime(value) {
+  if (!value) {
+    return '—';
+  }
+  return dateTimeFormatter.format(new Date(value));
+}
+
+async function responseErrorMessage(response, fallback) {
+  const text = await response.text();
+  if (!text) {
+    return fallback;
+  }
+  try {
+    const payload = JSON.parse(text);
+    return payload.message || payload.error || fallback;
+  } catch (error) {
+    return text;
+  }
 }
 
 function buildPieGradient(items) {
@@ -171,34 +199,13 @@ function ProductRating({ title, rows, emptyText }) {
   );
 }
 
-function ConfirmDialog({ dialog, onCancel, onConfirm }) {
-  if (!dialog) {
-    return null;
-  }
-
-  return (
-    <div className="modal-backdrop" role="presentation">
-      <div className="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
-        <div className="confirm-icon">!</div>
-        <div>
-          <h2 id="confirm-title">{dialog.title}</h2>
-          <p>{dialog.message}</p>
-        </div>
-        <div className="confirm-actions">
-          <button type="button" className="secondary-button" onClick={onCancel}>
-            Отмена
-          </button>
-          <button type="button" className="danger-button filled" onClick={onConfirm}>
-            {dialog.confirmText}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function App() {
   const [activePage, setActivePage] = useState('finance');
+  const [currentUser, setCurrentUser] = useState(null);
+  const [authMode, setAuthMode] = useState('login');
+  const [authForm, setAuthForm] = useState({ displayName: '', email: '', password: '' });
+  const [authStatus, setAuthStatus] = useState('loading');
+  const [authMessage, setAuthMessage] = useState('');
   const [loadDateFrom, setLoadDateFrom] = useState('2026-06-21');
   const [loadDateTo, setLoadDateTo] = useState('2026-06-24');
   const [reportDateFrom, setReportDateFrom] = useState('2026-06-21');
@@ -208,6 +215,10 @@ function App() {
   const [visibleMonth, setVisibleMonth] = useState(() => parseDate('2026-06-01'));
 
   const [wildberriesToken, setWildberriesToken] = useState('');
+  const [displayName, setDisplayName] = useState('');
+  const [email, setEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [repeatPassword, setRepeatPassword] = useState('');
   const [taxPercent, setTaxPercent] = useState('0');
   const [profileStatus, setProfileStatus] = useState('idle');
   const [profileMessage, setProfileMessage] = useState('');
@@ -228,8 +239,14 @@ function App() {
   const [deleteMessage, setDeleteMessage] = useState('');
   const [recalculateStatus, setRecalculateStatus] = useState('idle');
   const [recalculateMessage, setRecalculateMessage] = useState('');
+  const [adminUsers, setAdminUsers] = useState([]);
+  const [selectedAdminUserId, setSelectedAdminUserId] = useState(null);
+  const [adminStatus, setAdminStatus] = useState('idle');
+  const [adminMessage, setAdminMessage] = useState('');
   const [analyticsReport, setAnalyticsReport] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState(null);
+  const userId = currentUser?.userId;
+  const isAdmin = currentUser?.role === 'ADMIN';
 
   const coverageByDate = useMemo(() => {
     return new Map(coverage.map((day) => [day.date, day]));
@@ -247,7 +264,95 @@ function App() {
     return productCosts.filter((item) => String(item.nmId).includes(query));
   }, [costSearchNmId, productCosts]);
 
+  const selectedAdminUser = useMemo(() => {
+    return adminUsers.find((user) => user.userId === selectedAdminUserId) ?? adminUsers[0] ?? null;
+  }, [adminUsers, selectedAdminUserId]);
+
   useEffect(() => {
+    loadCurrentUser();
+  }, []);
+
+  async function loadCurrentUser() {
+    try {
+      const response = await fetch('/api/auth/me', { credentials: 'include' });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const responseText = await response.text();
+      const user = responseText ? JSON.parse(responseText) : null;
+      setCurrentUser(user);
+      setAuthStatus(user ? 'success' : 'idle');
+    } catch (error) {
+      setCurrentUser(null);
+      setAuthStatus('idle');
+    }
+  }
+
+  async function handleAuthSubmit() {
+    setAuthStatus('loading');
+    setAuthMessage('');
+
+    if (!authForm.email.trim() || !authForm.password.trim()) {
+      setAuthStatus('error');
+      setAuthMessage('Введите email и пароль.');
+      return;
+    }
+    if (authMode === 'register' && !authForm.displayName.trim()) {
+      setAuthStatus('error');
+      setAuthMessage('Введите имя.');
+      return;
+    }
+    if (authMode === 'register' && authForm.password.length < 8) {
+      setAuthStatus('error');
+      setAuthMessage('Пароль должен быть не короче 8 символов.');
+      return;
+    }
+
+    try {
+      const endpoint = authMode === 'register' ? '/api/auth/register' : '/api/auth/login';
+      const body = authMode === 'register'
+        ? authForm
+        : { email: authForm.email, password: authForm.password };
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        throw new Error(await responseErrorMessage(response, 'Не удалось выполнить вход.'));
+      }
+
+      const user = await response.json();
+      setCurrentUser(user);
+      setDisplayName(user.displayName ?? '');
+      setEmail(user.email ?? '');
+      setAuthStatus('success');
+      setAuthMessage('');
+    } catch (error) {
+      setCurrentUser(null);
+      setAuthStatus('error');
+      setAuthMessage(error.message);
+    }
+  }
+
+  async function handleLogout() {
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+    setCurrentUser(null);
+    setAuthStatus('idle');
+    setActivePage('finance');
+    setAnalyticsReport(null);
+    setCoverage([]);
+    setProductCosts([]);
+  }
+
+  useEffect(() => {
+    if (!userId) {
+      return;
+    }
     const controller = new AbortController();
     const { start, end } = getMonthBounds(visibleMonth);
 
@@ -256,7 +361,7 @@ function App() {
 
       try {
         const params = new URLSearchParams({
-          userId: String(USER_ID),
+          userId: String(userId),
           dateFrom: formatDate(start),
           dateTo: formatDate(end),
         });
@@ -281,13 +386,141 @@ function App() {
     loadCoverage();
 
     return () => controller.abort();
-  }, [visibleMonth, coverageReloadKey]);
+  }, [visibleMonth, coverageReloadKey, userId]);
 
   useEffect(() => {
-    if (activePage === 'costs') {
+    if (activePage === 'costs' && userId) {
       loadProductCosts();
     }
-  }, [activePage]);
+  }, [activePage, userId]);
+
+  useEffect(() => {
+    if (activePage === 'profile' && userId) {
+      loadUserSettings();
+    }
+  }, [activePage, userId]);
+
+  useEffect(() => {
+    if (activePage === 'admin' && userId && isAdmin) {
+      loadSyncJobs();
+    }
+  }, [activePage, userId, isAdmin]);
+
+  useEffect(() => {
+    if (activePage === 'admin' && !isAdmin) {
+      setActivePage('finance');
+    }
+  }, [activePage, isAdmin]);
+
+  async function loadSyncJobs() {
+    setAdminStatus('loading');
+    setAdminMessage('');
+
+    try {
+      const response = await fetch('/api/admin/users', { credentials: 'include' });
+
+      if (!response.ok) {
+        throw new Error(await responseErrorMessage(response, `HTTP ${response.status}`));
+      }
+
+      const users = await response.json();
+      setAdminUsers(users);
+      setSelectedAdminUserId((current) => current ?? users[0]?.userId ?? null);
+      setAdminStatus('success');
+    } catch (error) {
+      setAdminUsers([]);
+      setSelectedAdminUserId(null);
+      setAdminStatus('error');
+      setAdminMessage(error.message || 'Не удалось загрузить пользователей.');
+    }
+  }
+
+  async function loadUserSettings() {
+    setProfileStatus('loading');
+    setProfileMessage('');
+
+    try {
+      const response = await fetch(`/api/users/${userId}/settings`);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const settings = await response.json();
+      setDisplayName(settings.displayName ?? '');
+      setEmail(settings.email ?? '');
+      setTaxPercent(String(settings.taxPercent ?? 0));
+      setProfileStatus('idle');
+    } catch (error) {
+      setProfileStatus('error');
+      setProfileMessage('Не удалось загрузить настройки профиля.');
+    }
+  }
+
+  async function handleSaveAccount() {
+    setProfileStatus('loading');
+    setProfileMessage('');
+
+    try {
+      const response = await fetch(`/api/users/${userId}/account`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName, email }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const settings = await response.json();
+      setDisplayName(settings.displayName ?? '');
+      setEmail(settings.email ?? '');
+      setTaxPercent(String(settings.taxPercent ?? 0));
+      setProfileStatus('success');
+      setProfileMessage('Данные аккаунта сохранены.');
+    } catch (error) {
+      setProfileStatus('error');
+      setProfileMessage('Не удалось сохранить данные аккаунта.');
+    }
+  }
+
+  async function handleChangePassword() {
+    setProfileMessage('');
+
+    if (newPassword.length < 8) {
+      setProfileStatus('error');
+      setProfileMessage('Пароль должен быть не короче 8 символов.');
+      return;
+    }
+
+    if (newPassword !== repeatPassword) {
+      setProfileStatus('error');
+      setProfileMessage('Пароли не совпадают.');
+      return;
+    }
+
+    setProfileStatus('loading');
+
+    try {
+      const response = await fetch(`/api/users/${userId}/password`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      setNewPassword('');
+      setRepeatPassword('');
+      setProfileStatus('success');
+      setProfileMessage('Пароль изменен.');
+    } catch (error) {
+      setProfileStatus('error');
+      setProfileMessage('Не удалось изменить пароль.');
+    }
+  }
 
   async function handleSaveToken() {
     setProfileStatus('loading');
@@ -298,7 +531,7 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: USER_ID,
+          userId: userId,
           token: wildberriesToken,
         }),
       });
@@ -321,7 +554,7 @@ function App() {
     setProfileMessage('');
 
     try {
-      const response = await fetch(`/api/users/${USER_ID}/tax-percent`, {
+      const response = await fetch(`/api/users/${userId}/tax-percent`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ taxPercent }),
@@ -331,6 +564,8 @@ function App() {
         throw new Error(`HTTP ${response.status}`);
       }
 
+      const settings = await response.json();
+      setTaxPercent(String(settings.taxPercent ?? taxPercent));
       setProfileStatus('success');
       setProfileMessage('Процент налога сохранен.');
     } catch (error) {
@@ -348,7 +583,7 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: USER_ID,
+          userId: userId,
           dateFrom: loadDateFrom,
           dateTo: loadDateTo,
         }),
@@ -391,7 +626,7 @@ function App() {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: USER_ID,
+          userId: userId,
           dateFrom: deleteDateFrom,
           dateTo: deleteDateTo,
         }),
@@ -417,11 +652,34 @@ function App() {
     setRecalculateMessage('');
 
     try {
+      const coverageParams = new URLSearchParams({
+        userId: String(userId),
+        dateFrom: reportDateFrom,
+        dateTo: reportDateTo,
+      });
+      const coverageResponse = await fetch(`/api/reports/coverage?${coverageParams}`);
+
+      if (!coverageResponse.ok) {
+        throw new Error(`HTTP ${coverageResponse.status}`);
+      }
+
+      const periodCoverage = await coverageResponse.json();
+      const missingDates = periodCoverage
+        .filter((day) => !day.hasRawData && !day.hasDailyReport)
+        .map((day) => day.date);
+
+      if (missingDates.length > 0) {
+        setAnalyticsReport(null);
+        setRecalculateStatus('error');
+        setRecalculateMessage(`Недостаточно данных для выбранного периода. Загрузите недостающие даты: ${missingDates.join(', ')}.`);
+        return;
+      }
+
       const response = await fetch('/api/reports/daily/recalculate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userId: USER_ID,
+          userId: userId,
           dateFrom: reportDateFrom,
           dateTo: reportDateTo,
         }),
@@ -434,7 +692,7 @@ function App() {
       await response.json();
 
       const params = new URLSearchParams({
-        userId: String(USER_ID),
+        userId: String(userId),
         dateFrom: reportDateFrom,
         dateTo: reportDateTo,
       });
@@ -445,7 +703,6 @@ function App() {
       }
 
       setAnalyticsReport(await analyticsResponse.json());
-      setCoverageReloadKey((value) => value + 1);
       setRecalculateStatus('success');
       setRecalculateMessage('Аналитика построена.');
     } catch (error) {
@@ -457,7 +714,7 @@ function App() {
 
   function handleDownloadXlsx() {
     const params = new URLSearchParams({
-      userId: String(USER_ID),
+      userId: String(userId),
       dateFrom: reportDateFrom,
       dateTo: reportDateTo,
     });
@@ -470,7 +727,7 @@ function App() {
 
   async function loadProductCosts() {
     try {
-      const response = await fetch(`/api/product-costs?userId=${USER_ID}`);
+      const response = await fetch(`/api/product-costs?userId=${userId}`);
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -500,7 +757,7 @@ function App() {
     setCostImportMessage('');
 
     try {
-      const response = await fetch(`${endpoint}?userId=${USER_ID}`, {
+      const response = await fetch(`${endpoint}?userId=${userId}`, {
         method: 'POST',
         body: formData,
       });
@@ -529,12 +786,21 @@ function App() {
     });
   }
 
+  function requestDeleteAccount() {
+    setConfirmDialog({
+      type: 'delete-account',
+      title: 'Удалить аккаунт?',
+      message: 'Будут удалены профиль, WB-токен, себестоимость, загрузки и финансовые отчеты. В локальной демо-версии для продолжения понадобится создать нового пользователя.',
+      confirmText: 'Удалить аккаунт',
+    });
+  }
+
   async function handleDeleteProductCost(productCostId) {
     setCostImportStatus('loading');
     setCostImportMessage('');
 
     try {
-      const response = await fetch(`/api/product-costs/${productCostId}?userId=${USER_ID}`, {
+      const response = await fetch(`/api/product-costs/${productCostId}?userId=${userId}`, {
         method: 'DELETE',
       });
 
@@ -551,6 +817,36 @@ function App() {
     }
   }
 
+  async function handleDeleteAccount() {
+    setProfileStatus('loading');
+    setProfileMessage('');
+
+    try {
+      const response = await fetch(`/api/users/${userId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      setDisplayName('');
+      setEmail('');
+      setTaxPercent('0');
+      setWildberriesToken('');
+      setProductCosts([]);
+      setCoverage([]);
+      setAnalyticsReport(null);
+      setCurrentUser(null);
+      setAuthStatus('idle');
+      setProfileStatus('success');
+      setProfileMessage('Аккаунт удален.');
+    } catch (error) {
+      setProfileStatus('error');
+      setProfileMessage('Не удалось удалить аккаунт.');
+    }
+  }
+
   async function handleConfirmAction() {
     const dialog = confirmDialog;
     setConfirmDialog(null);
@@ -563,14 +859,49 @@ function App() {
     if (dialog.type === 'delete-product-cost') {
       await handleDeleteProductCost(dialog.productCostId);
     }
+    if (dialog.type === 'delete-account') {
+      await handleDeleteAccount();
+    }
+  }
+
+  if (authStatus === 'loading' && !currentUser) {
+    return (
+      <main className="auth-page">
+        <section className="auth-card">
+          <h1>Загрузка</h1>
+          <p>Проверяем текущую сессию.</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (!currentUser) {
+    return (
+      <AuthScreen
+        mode={authMode}
+        setMode={setAuthMode}
+        form={authForm}
+        setForm={setAuthForm}
+        status={authStatus}
+        message={authMessage}
+        onSubmit={handleAuthSubmit}
+      />
+    );
   }
 
   return (
     <main className="app">
       <header className="toolbar">
-        <div>
-          <h1>Финансовая аналитика</h1>
-          <p>Инструменты для анализа финансов продавца Wildberries.</p>
+        <div className="topbar">
+          <div>
+            <h1>Финансовая аналитика</h1>
+          </div>
+          <div className="user-menu">
+            <div className="user-identity">
+              <span>{currentUser.displayName}</span>
+              <small>{currentUser.email}</small>
+            </div>
+          </div>
         </div>
 
         <nav className="main-nav" aria-label="Разделы приложения">
@@ -583,99 +914,37 @@ function App() {
           <button type="button" className={activePage === 'costs' ? 'nav-button active' : 'nav-button'} onClick={() => setActivePage('costs')}>
             Себестоимость
           </button>
-          <button type="button" className={activePage === 'admin' ? 'nav-button active' : 'nav-button'} onClick={() => setActivePage('admin')}>
-            Админка
-          </button>
+          {isAdmin && (
+            <button type="button" className={activePage === 'admin' ? 'nav-button active' : 'nav-button'} onClick={() => setActivePage('admin')}>
+              Админка
+            </button>
+          )}
         </nav>
       </header>
 
       {activePage === 'profile' && (
-        <section className="panel" aria-label="Профиль продавца">
-          <div className="section-header">
-            <div>
-              <h2>Профиль</h2>
-              <p>Данные аккаунта, настройки безопасности и параметры продавца.</p>
-            </div>
-          </div>
-
-          <div className="settings-block">
-            <h3>Аккаунт</h3>
-            <div className="account-grid">
-              <label>
-                Имя
-                <input type="text" defaultValue="Seller" />
-              </label>
-              <label>
-                Email
-                <input type="email" defaultValue="seller@example.com" />
-              </label>
-              <button type="button" className="secondary-button">Сохранить данные</button>
-            </div>
-          </div>
-
-          <div className="settings-block">
-            <h3>Безопасность</h3>
-            <div className="account-grid">
-              <label>
-                Новый пароль
-                <input type="password" placeholder="Введите новый пароль" />
-              </label>
-              <label>
-                Повторите пароль
-                <input type="password" placeholder="Повторите новый пароль" />
-              </label>
-              <button type="button" className="secondary-button">Сменить пароль</button>
-            </div>
-          </div>
-
-          <div className="settings-block">
-            <h3>Настройки продавца</h3>
-            <p>WB-токен хранится в зашифрованном виде и используется только для read-only загрузки отчетов.</p>
-          </div>
-
-          <div className="profile-grid">
-            <label>
-              WB API token
-              <input
-                type="password"
-                value={wildberriesToken}
-                onChange={(event) => setWildberriesToken(event.target.value)}
-                placeholder="Вставьте read-only ключ"
-              />
-            </label>
-            <button
-              type="button"
-              className="secondary-button"
-              disabled={profileStatus === 'loading' || wildberriesToken.trim() === ''}
-              onClick={handleSaveToken}
-            >
-              Сохранить токен
-            </button>
-            <label>
-              Налог, %
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={taxPercent}
-                onChange={(event) => setTaxPercent(event.target.value)}
-              />
-            </label>
-            <button type="button" className="secondary-button" disabled={profileStatus === 'loading'} onClick={handleSaveTaxPercent}>
-              Сохранить налог
-            </button>
-          </div>
-
-          {profileMessage && <div className={`notice ${profileStatus === 'error' ? 'error' : 'success'}`}>{profileMessage}</div>}
-
-          <div className="danger-zone">
-            <div>
-              <h3>Удаление аккаунта</h3>
-              <p>В будущем здесь будет удаление аккаунта и связанных пользовательских данных.</p>
-            </div>
-            <button type="button" className="danger-button">Удалить аккаунт</button>
-          </div>
-        </section>
+        <ProfilePage
+          displayName={displayName}
+          setDisplayName={setDisplayName}
+          email={email}
+          setEmail={setEmail}
+          newPassword={newPassword}
+          setNewPassword={setNewPassword}
+          repeatPassword={repeatPassword}
+          setRepeatPassword={setRepeatPassword}
+          wildberriesToken={wildberriesToken}
+          setWildberriesToken={setWildberriesToken}
+          taxPercent={taxPercent}
+          setTaxPercent={setTaxPercent}
+          profileStatus={profileStatus}
+          profileMessage={profileMessage}
+          handleLogout={handleLogout}
+          handleSaveAccount={handleSaveAccount}
+          handleChangePassword={handleChangePassword}
+          handleSaveToken={handleSaveToken}
+          handleSaveTaxPercent={handleSaveTaxPercent}
+          requestDeleteAccount={requestDeleteAccount}
+        />
       )}
 
       {activePage === 'finance' && (
@@ -709,9 +978,8 @@ function App() {
             <div className="section-header">
               <div>
                 <h2>Календарь покрытия</h2>
-                <p>Дни с данными отмечены синим кружком. Месяц можно листать.</p>
               </div>
-              <span>{coverageStatus === 'loading' ? 'Загрузка...' : 'Данные по месяцу'}</span>
+              <span>{coverageStatus === 'loading' ? 'Загрузка...' : ''}</span>
             </div>
 
             <div className="legend">
@@ -747,7 +1015,7 @@ function App() {
                   }
                   const isoDate = formatDate(date);
                   const day = coverageByDate.get(isoDate);
-                  const hasData = Boolean(day?.hasRawData || day?.hasDailyReport);
+                  const hasData = Boolean(day?.hasDailyReport);
 
                   return (
                     <span className={hasData ? 'calendar-cell has-data' : 'calendar-cell'} key={isoDate}>
@@ -779,7 +1047,6 @@ function App() {
             <div className="section-header">
               <div>
                 <h2>Аналитика за период</h2>
-                <p>BI-инструменты строятся по выбранному периоду после проверки покрытия.</p>
               </div>
             </div>
 
@@ -871,91 +1138,32 @@ function App() {
       )}
 
       {activePage === 'costs' && (
-        <section className="panel" aria-label="Себестоимость">
-          <div className="section-header">
-            <div>
-              <h2>Себестоимость</h2>
-              <p>Загрузите себестоимость товаров из CSV/XLSX, скачайте шаблон или найдите товар по nmId.</p>
-            </div>
-          </div>
-
-          <div className="cost-actions">
-            <button type="button" className="secondary-button" onClick={handleDownloadCostTemplate}>
-              Скачать шаблон
-            </button>
-            <label>
-              Файл себестоимости
-              <input type="file" accept=".csv,.xlsx,.xls" onChange={(event) => setCostFile(event.target.files?.[0] ?? null)} />
-            </label>
-            <button type="button" className="primary-button" disabled={!costFile || costImportStatus === 'loading'} onClick={handleImportCosts}>
-              {costImportStatus === 'loading' ? 'Загрузка...' : 'Загрузить себестоимость'}
-            </button>
-          </div>
-
-          {costImportMessage && <div className={`notice ${costImportStatus === 'error' ? 'error' : 'success'}`}>{costImportMessage}</div>}
-
-          <div className="cost-table-header">
-            <label>
-              Поиск по nmId
-              <input
-                type="search"
-                value={costSearchNmId}
-                onChange={(event) => setCostSearchNmId(event.target.value)}
-                placeholder="Например, 125167917"
-              />
-            </label>
-            <span>Показано: {filteredProductCosts.length} из {productCosts.length}</span>
-          </div>
-
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>NM ID</th>
-                  <th>Товар</th>
-                  <th>Действует с</th>
-                  <th>Себестоимость</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredProductCosts.map((item) => (
-                  <tr key={item.id}>
-                    <td>{item.nmId}</td>
-                    <td>{item.productName}</td>
-                    <td>{item.validFrom}</td>
-                    <td>{item.costAmount}</td>
-                    <td>
-                      <button
-                        type="button"
-                        className="table-danger-button"
-                        onClick={() => requestDeleteProductCost(item)}
-                      >
-                        Удалить
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {filteredProductCosts.length === 0 && (
-                  <tr>
-                    <td colSpan="5">Себестоимость пока не загружена.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <CostsPage
+          costFile={costFile}
+          setCostFile={setCostFile}
+          costSearchNmId={costSearchNmId}
+          setCostSearchNmId={setCostSearchNmId}
+          productCosts={productCosts}
+          filteredProductCosts={filteredProductCosts}
+          costImportStatus={costImportStatus}
+          costImportMessage={costImportMessage}
+          handleDownloadCostTemplate={handleDownloadCostTemplate}
+          handleImportCosts={handleImportCosts}
+          requestDeleteProductCost={requestDeleteProductCost}
+        />
       )}
 
-      {activePage === 'admin' && (
-        <section className="panel" aria-label="Админка">
-          <div className="section-header">
-            <div>
-              <h2>Админка</h2>
-              <p>Здесь будут пользователи, логи загрузок и ошибки синхронизации.</p>
-            </div>
-          </div>
-        </section>
+      {activePage === 'admin' && isAdmin && (
+        <AdminPage
+          adminUsers={adminUsers}
+          selectedAdminUser={selectedAdminUser}
+          setSelectedAdminUserId={setSelectedAdminUserId}
+          adminStatus={adminStatus}
+          adminMessage={adminMessage}
+          loadSyncJobs={loadSyncJobs}
+          formatDateTime={formatDateTime}
+          formatPercent={formatPercent}
+        />
       )}
 
       <ConfirmDialog

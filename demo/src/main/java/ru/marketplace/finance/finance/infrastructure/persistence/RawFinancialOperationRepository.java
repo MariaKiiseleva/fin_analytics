@@ -20,6 +20,10 @@ public interface RawFinancialOperationRepository extends JpaRepository<RawFinanc
 
 	long deleteByUserIdAndBusinessDateBetween(Long userId, LocalDate dateFrom, LocalDate dateTo);
 
+	long deleteByUserId(Long userId);
+
+	long countByUserId(Long userId);
+
 	@Query("""
 			select
 				operation.businessDate as businessDate,

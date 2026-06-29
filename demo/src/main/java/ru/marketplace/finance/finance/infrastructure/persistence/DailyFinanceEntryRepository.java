@@ -26,6 +26,10 @@ public interface DailyFinanceEntryRepository extends JpaRepository<DailyFinanceE
 
 	long deleteByUserIdAndBusinessDateBetween(Long userId, LocalDate dateFrom, LocalDate dateTo);
 
+	long deleteByUserId(Long userId);
+
+	long countByUserId(Long userId);
+
 	@Query("""
 			select
 				entry.businessDate as businessDate,

@@ -1,5 +1,6 @@
 package ru.marketplace.finance.finance.presentation;
 
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import java.time.LocalDate;
@@ -17,6 +18,7 @@ import ru.marketplace.finance.finance.infrastructure.persistence.RawFinancialOpe
 import ru.marketplace.finance.synchronization.domain.SyncJob;
 import ru.marketplace.finance.synchronization.domain.SyncStatus;
 import ru.marketplace.finance.synchronization.infrastructure.SyncJobRepository;
+import ru.marketplace.finance.security.CurrentUserService;
 
 @RestController
 @RequestMapping("/api/reports")
@@ -26,21 +28,26 @@ public class ReportCoverageController {
 	private final RawFinancialOperationRepository rawRepository;
 	private final DailyFinanceEntryRepository dailyRepository;
 	private final SyncJobRepository syncJobRepository;
+	private final CurrentUserService currentUserService;
 
 	public ReportCoverageController(
 			RawFinancialOperationRepository rawRepository,
 			DailyFinanceEntryRepository dailyRepository,
-			SyncJobRepository syncJobRepository) {
+			SyncJobRepository syncJobRepository,
+			CurrentUserService currentUserService) {
 		this.rawRepository = rawRepository;
 		this.dailyRepository = dailyRepository;
 		this.syncJobRepository = syncJobRepository;
+		this.currentUserService = currentUserService;
 	}
 
 	@GetMapping("/coverage")
 	public List<ReportCoverageDayView> findCoverage(
 			@RequestParam @Positive Long userId,
 			@RequestParam @NotNull LocalDate dateFrom,
-			@RequestParam @NotNull LocalDate dateTo) {
+			@RequestParam @NotNull LocalDate dateTo,
+			HttpSession session) {
+		currentUserService.requireSameUser(session, userId);
 		if (dateFrom.isAfter(dateTo)) {
 			throw new IllegalArgumentException("dateFrom must not be after dateTo");
 		}

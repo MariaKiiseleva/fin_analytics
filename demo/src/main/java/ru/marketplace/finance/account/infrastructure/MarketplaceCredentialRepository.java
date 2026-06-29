@@ -10,4 +10,6 @@ public interface MarketplaceCredentialRepository extends JpaRepository<Marketpla
 	Optional<MarketplaceCredential> findByUserIdAndProvider(Long userId, MarketplaceProvider provider);
 
 	boolean existsByUserIdAndProvider(Long userId, MarketplaceProvider provider);
+
+	long deleteByUserId(Long userId);
 }

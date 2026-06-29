@@ -1,5 +1,6 @@
 package ru.marketplace.finance.cost.presentation;
 
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Positive;
 import java.io.IOException;
@@ -27,6 +28,7 @@ import ru.marketplace.finance.cost.application.ProductCostImportResult;
 import ru.marketplace.finance.cost.application.ProductCostService;
 import ru.marketplace.finance.cost.application.ProductCostTemplateExportService;
 import ru.marketplace.finance.cost.application.ProductCostView;
+import ru.marketplace.finance.security.CurrentUserService;
 
 @RestController
 @RequestMapping("/api/product-costs")
@@ -37,21 +39,27 @@ public class ProductCostController {
 	private final ProductCostCsvImportService csvImportService;
 	private final ProductCostExcelImportService excelImportService;
 	private final ProductCostTemplateExportService templateExportService;
+	private final CurrentUserService currentUserService;
 
 	public ProductCostController(
 			ProductCostService productCostService,
 			ProductCostCsvImportService csvImportService,
 			ProductCostExcelImportService excelImportService,
-			ProductCostTemplateExportService templateExportService) {
+			ProductCostTemplateExportService templateExportService,
+			CurrentUserService currentUserService) {
 		this.productCostService = productCostService;
 		this.csvImportService = csvImportService;
 		this.excelImportService = excelImportService;
 		this.templateExportService = templateExportService;
+		this.currentUserService = currentUserService;
 	}
 
 	@PostMapping
 	@ResponseStatus(HttpStatus.CREATED)
-	public ProductCostView saveProductCost(@Valid @RequestBody SaveProductCostRequest request) {
+	public ProductCostView saveProductCost(
+			@Valid @RequestBody SaveProductCostRequest request,
+			HttpSession session) {
+		currentUserService.requireSameUser(session, request.userId());
 		return productCostService.saveProductCost(
 				request.userId(),
 				request.nmId(),
@@ -62,7 +70,10 @@ public class ProductCostController {
 
 	@PostMapping("/batch")
 	@ResponseStatus(HttpStatus.CREATED)
-	public List<ProductCostView> saveProductCosts(@Valid @RequestBody BatchSaveProductCostsRequest request) {
+	public List<ProductCostView> saveProductCosts(
+			@Valid @RequestBody BatchSaveProductCostsRequest request,
+			HttpSession session) {
+		currentUserService.requireSameUser(session, request.userId());
 		return productCostService.saveProductCosts(
 				request.userId(),
 				request.items().stream()
@@ -74,7 +85,9 @@ public class ProductCostController {
 	@ResponseStatus(HttpStatus.CREATED)
 	public ProductCostImportResult importProductCostsCsv(
 			@RequestParam @Positive Long userId,
-			@RequestPart("file") MultipartFile file) throws IOException {
+			@RequestPart("file") MultipartFile file,
+			HttpSession session) throws IOException {
+		currentUserService.requireSameUser(session, userId);
 		return csvImportService.importProductCosts(userId, file.getInputStream());
 	}
 
@@ -82,7 +95,9 @@ public class ProductCostController {
 	@ResponseStatus(HttpStatus.CREATED)
 	public ProductCostImportResult importProductCostsExcel(
 			@RequestParam @Positive Long userId,
-			@RequestPart("file") MultipartFile file) throws IOException {
+			@RequestPart("file") MultipartFile file,
+			HttpSession session) throws IOException {
+		currentUserService.requireSameUser(session, userId);
 		return excelImportService.importProductCosts(userId, file.getInputStream());
 	}
 
@@ -102,7 +117,9 @@ public class ProductCostController {
 	@GetMapping
 	public List<ProductCostView> findProductCosts(
 			@RequestParam @Positive Long userId,
-			@RequestParam(required = false) @Positive Long nmId) {
+			@RequestParam(required = false) @Positive Long nmId,
+			HttpSession session) {
+		currentUserService.requireSameUser(session, userId);
 		if (nmId == null) {
 			return productCostService.findAllProductCosts(userId);
 		}
@@ -113,7 +130,9 @@ public class ProductCostController {
 	@ResponseStatus(HttpStatus.NO_CONTENT)
 	public void deleteProductCost(
 			@PathVariable @Positive Long productCostId,
-			@RequestParam @Positive Long userId) {
+			@RequestParam @Positive Long userId,
+			HttpSession session) {
+		currentUserService.requireSameUser(session, userId);
 		productCostService.deleteProductCost(userId, productCostId);
 	}
 }

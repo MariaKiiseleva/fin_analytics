@@ -1,5 +1,6 @@
 package ru.marketplace.finance.finance.presentation;
 
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import java.time.LocalDate;
@@ -11,6 +12,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import ru.marketplace.finance.finance.infrastructure.persistence.DailyFinanceEntryRepository;
+import ru.marketplace.finance.security.CurrentUserService;
 
 @RestController
 @RequestMapping("/api/reports")
@@ -18,16 +20,22 @@ import ru.marketplace.finance.finance.infrastructure.persistence.DailyFinanceEnt
 public class DailyFinanceReportController {
 
 	private final DailyFinanceEntryRepository dailyRepository;
+	private final CurrentUserService currentUserService;
 
-	public DailyFinanceReportController(DailyFinanceEntryRepository dailyRepository) {
+	public DailyFinanceReportController(
+			DailyFinanceEntryRepository dailyRepository,
+			CurrentUserService currentUserService) {
 		this.dailyRepository = dailyRepository;
+		this.currentUserService = currentUserService;
 	}
 
 	@GetMapping("/daily")
 	public List<DailyFinanceEntryView> findDailyReport(
 			@RequestParam @Positive Long userId,
 			@RequestParam @NotNull LocalDate dateFrom,
-			@RequestParam @NotNull LocalDate dateTo) {
+			@RequestParam @NotNull LocalDate dateTo,
+			HttpSession session) {
+		currentUserService.requireSameUser(session, userId);
 		if (dateFrom.isAfter(dateTo)) {
 			throw new IllegalArgumentException("dateFrom must not be after dateTo");
 		}

@@ -4,6 +4,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import java.time.Instant;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import ru.marketplace.finance.finance.infrastructure.wb.WbApiException;
@@ -18,6 +20,17 @@ public class ApiExceptionHandler {
 			IllegalArgumentException exception,
 			HttpServletRequest request) {
 		return error(HttpStatus.BAD_REQUEST, exception.getMessage(), request);
+	}
+
+	@ExceptionHandler(MethodArgumentNotValidException.class)
+	public ResponseEntity<ApiErrorResponse> handleValidation(
+			MethodArgumentNotValidException exception,
+			HttpServletRequest request) {
+		String message = exception.getBindingResult().getFieldErrors().stream()
+				.findFirst()
+				.map(this::validationMessage)
+				.orElse("Некорректные данные запроса");
+		return error(HttpStatus.BAD_REQUEST, message, request);
 	}
 
 	@ExceptionHandler(WbTokenExpiredException.class)
@@ -56,5 +69,9 @@ public class ApiExceptionHandler {
 						status.getReasonPhrase(),
 						message,
 						request.getRequestURI()));
+	}
+
+	private String validationMessage(FieldError error) {
+		return error.getField() + ": " + error.getDefaultMessage();
 	}
 }

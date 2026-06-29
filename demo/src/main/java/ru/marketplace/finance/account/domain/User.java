@@ -101,6 +101,11 @@ public class User {
 		touch();
 	}
 
+	public void changeEmail(String email) {
+		this.email = requireText(email, "email");
+		touch();
+	}
+
 	public void changePasswordHash(String passwordHash) {
 		this.passwordHash = requireText(passwordHash, "passwordHash");
 		touch();
